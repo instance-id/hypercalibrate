@@ -1,0 +1,11 @@
+/target
+/dist
+/logs
+/images
+/config.toml
+/deploy.conf
+/.lh
+/.history
+*.log
+.DS_Store
+Thumbs.db

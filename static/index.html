@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HyperCalibrate</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 HyperCalibrate</h1>
+            <div class="status" id="status">Connecting...</div>
+        </header>
+
+        <main>
+            <div class="preview-container">
+                <div class="preview-wrapper" id="preview-wrapper">
+                    <!-- Camera preview -->
+                    <img id="preview" src="/api/preview/raw" alt="Camera Preview">
+
+                    <!-- Calibration overlay -->
+                    <svg id="calibration-overlay" class="calibration-overlay">
+                        <!-- Grid lines connecting points -->
+                        <g id="grid-lines" class="grid-lines"></g>
+                        <!-- Calibration points -->
+                        <g id="points-group"></g>
+                    </svg>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label class="toggle">
+                        <input type="checkbox" id="calibration-enabled" checked>
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">Calibration Active</span>
+                    </label>
+                </div>
+
+                <div class="control-group">
+                    <label class="toggle">
+                        <input type="checkbox" id="show-corrected">
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">Show Corrected Output</span>
+                    </label>
+                </div>
+
+                <div class="button-group">
+                    <button id="reset-btn" class="btn btn-secondary">Reset Points</button>
+                    <button id="save-btn" class="btn btn-primary">Save Calibration</button>
+                </div>
+
+                <div class="help-text">
+                    <p>Drag <span class="corner-indicator">●</span> corners to match TV boundaries.
+                    <kbd>Shift</kbd>+click on an edge to add a <span class="edge-indicator">●</span> midpoint.
+                    <kbd>Ctrl</kbd>+click a midpoint to remove it.</p>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <div id="info">
+                <span id="version">v0.1.0</span>
+                <span id="resolution">640×480</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

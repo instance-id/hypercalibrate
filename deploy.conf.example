@@ -1,0 +1,52 @@
+# HyperCalibrate Deployment Configuration
+# Copy this file to deploy.conf and customize for your setup
+
+#===============================================================================
+# Raspberry Pi Connection (HyperBian defaults)
+#===============================================================================
+
+# IP address of your Raspberry Pi
+# Can also be a hostname like "hyperbian.local"
+PI_IP=192.168.1.100
+
+# SSH credentials (HyperBian defaults)
+PI_USER=hyperion
+PI_PASS=ambientlight
+PI_PORT=22
+
+#===============================================================================
+# Video Device Configuration
+#===============================================================================
+
+# Input camera device (your USB camera)
+# Run 'v4l2-ctl --list-devices' on the Pi to see available devices
+INPUT_DEVICE=/dev/video0
+
+# Output virtual camera device (for Hyperion to use)
+# This will be created by v4l2loopback
+OUTPUT_DEVICE=/dev/video10
+
+# Capture resolution (lower = faster, but less detail for calibration)
+CAPTURE_WIDTH=640
+CAPTURE_HEIGHT=480
+CAPTURE_FPS=30
+
+#===============================================================================
+# Web Server Configuration
+#===============================================================================
+
+# Port for the calibration web UI
+# Access at http://<pi-ip>:<port>
+WEB_PORT=8091
+
+# Bind address (0.0.0.0 = all interfaces)
+WEB_HOST=0.0.0.0
+
+#===============================================================================
+# Build Configuration
+#===============================================================================
+
+# Target architecture
+# aarch64 = 64-bit (Raspberry Pi 4/5, recommended)
+# armv7   = 32-bit (Raspberry Pi 2/3, older systems)
+TARGET_ARCH=aarch64

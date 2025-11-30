@@ -1,0 +1,62 @@
+# Default configuration for HyperCalibrate
+# This file is auto-generated on first run and can be edited manually
+
+[video]
+# Input camera device (your USB camera)
+input_device = "/dev/video0"
+
+# Output device (v4l2loopback virtual camera for Hyperion)
+output_device = "/dev/video10"
+
+# Capture resolution
+width = 640
+height = 480
+
+# Target frame rate
+fps = 30
+
+[server]
+# Web server bind address (0.0.0.0 for all interfaces)
+host = "0.0.0.0"
+
+# Web server port
+port = 8091
+
+[calibration]
+# Whether perspective correction is enabled
+enabled = true
+
+# Corner points (normalized 0.0-1.0 coordinates)
+# Order: top-left, top-right, bottom-right, bottom-left
+[[calibration.corners]]
+x = 0.1
+y = 0.1
+
+[[calibration.corners]]
+x = 0.9
+y = 0.1
+
+[[calibration.corners]]
+x = 0.9
+y = 0.9
+
+[[calibration.corners]]
+x = 0.1
+y = 0.9
+
+# Edge points for fine-tuning curved/irregular screen edges
+# These are DYNAMIC - start empty and add via the UI:
+#   - Shift+Click on an edge to add a point
+#   - Ctrl+Click on a point to remove it
+# Each edge point has: id, edge (0=top, 1=right, 2=bottom, 3=left), x, y, t (position along edge)
+#
+# Example edge point format:
+# [[calibration.edge_points]]
+# id = 100
+# edge = 0
+# x = 0.5
+# y = 0.1
+# t = 0.5
+#
+# Start with no edge points:
+edge_points = []

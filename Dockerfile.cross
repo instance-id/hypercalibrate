@@ -1,0 +1,35 @@
+# Dockerfile for cross-compiling HyperCalibrate for Raspberry Pi
+# Supports both aarch64 (64-bit) and armv7 (32-bit) targets
+
+FROM rust:latest
+
+# Install cross-compilation tools and libclang for bindgen
+RUN apt-get update && apt-get install -y \
+    gcc-aarch64-linux-gnu \
+    gcc-arm-linux-gnueabihf \
+    libc6-dev-arm64-cross \
+    libc6-dev-armhf-cross \
+    pkg-config \
+    clang \
+    libclang-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add Rust targets for Raspberry Pi
+RUN rustup target add aarch64-unknown-linux-gnu \
+    && rustup target add armv7-unknown-linux-gnueabihf
+
+# Create cargo config for cross-compilation
+RUN mkdir -p /root/.cargo && \
+    echo '[target.aarch64-unknown-linux-gnu]\n\
+linker = "aarch64-linux-gnu-gcc"\n\
+\n\
+[target.armv7-unknown-linux-gnueabihf]\n\
+linker = "arm-linux-gnueabihf-gcc"' > /root/.cargo/config.toml
+
+WORKDIR /app
+
+# Default to 64-bit build (Raspberry Pi 5 is 64-bit)
+ENV TARGET=aarch64-unknown-linux-gnu
+
+# Build command
+CMD ["sh", "-c", "cargo build --release --target $TARGET && cp target/$TARGET/release/hypercalibrate /output/"]
