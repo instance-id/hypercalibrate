@@ -11,22 +11,70 @@
     <div class="container">
         <header>
             <h1>🎯 HyperCalibrate</h1>
-            <div class="status" id="status">Connecting...</div>
+            <div class="header-controls">
+                <button id="toggle-camera-panel" class="btn btn-icon" title="Camera Settings">📷</button>
+                <div class="status" id="status">Connecting...</div>
+            </div>
         </header>
 
         <main>
-            <div class="preview-container">
-                <div class="preview-wrapper" id="preview-wrapper">
-                    <!-- Camera preview -->
-                    <img id="preview" src="/api/preview/raw" alt="Camera Preview">
+            <div class="preview-section">
+                <!-- Preview toolbar -->
+                <div class="preview-toolbar">
+                    <div class="preview-mode">
+                        <button id="capture-snapshot-btn" class="btn btn-small btn-primary" title="Capture new snapshot">📸 Capture</button>
+                        <label class="toggle toggle-compact">
+                            <input type="checkbox" id="live-preview-enabled">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Live</span>
+                        </label>
+                    </div>
+                    <div class="preview-options">
+                        <label class="toggle toggle-compact">
+                            <input type="checkbox" id="show-corrected">
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Corrected</span>
+                        </label>
+                    </div>
+                </div>
 
-                    <!-- Calibration overlay -->
-                    <svg id="calibration-overlay" class="calibration-overlay">
-                        <!-- Grid lines connecting points -->
-                        <g id="grid-lines" class="grid-lines"></g>
-                        <!-- Calibration points -->
-                        <g id="points-group"></g>
-                    </svg>
+                <div class="preview-container">
+                    <div class="preview-wrapper" id="preview-wrapper">
+                        <!-- Camera preview -->
+                        <img id="preview" src="/api/preview/raw" alt="Camera Preview">
+
+                        <!-- Calibration overlay -->
+                        <svg id="calibration-overlay" class="calibration-overlay" preserveAspectRatio="none">
+                            <!-- Grid lines connecting points -->
+                            <g id="grid-lines" class="grid-lines"></g>
+                            <!-- Calibration points -->
+                            <g id="points-group"></g>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Camera Controls Panel (collapsible sidebar) -->
+            <div id="camera-panel" class="camera-panel hidden">
+                <div class="panel-header">
+                    <h2>📷 Camera Settings</h2>
+                    <button id="close-camera-panel" class="btn btn-icon btn-small">✕</button>
+                </div>
+                <div class="panel-content">
+                    <div id="camera-controls-loading" class="loading-message">
+                        Loading camera controls...
+                    </div>
+                    <div id="camera-controls-container" class="camera-controls-container hidden">
+                        <!-- Controls will be dynamically inserted here -->
+                    </div>
+                    <div id="camera-controls-unavailable" class="unavailable-message hidden">
+                        <p>Camera controls are not available.</p>
+                        <p class="hint">Controls will appear after the camera initializes.</p>
+                    </div>
+                </div>
+                <div class="panel-footer">
+                    <button id="reset-camera-btn" class="btn btn-secondary btn-small">Reset to Defaults</button>
+                    <button id="refresh-camera-btn" class="btn btn-secondary btn-small">Refresh Values</button>
                 </div>
             </div>
 
@@ -36,14 +84,6 @@
                         <input type="checkbox" id="calibration-enabled" checked>
                         <span class="toggle-slider"></span>
                         <span class="toggle-label">Calibration Active</span>
-                    </label>
-                </div>
-
-                <div class="control-group">
-                    <label class="toggle">
-                        <input type="checkbox" id="show-corrected">
-                        <span class="toggle-slider"></span>
-                        <span class="toggle-label">Show Corrected Output</span>
                     </label>
                 </div>
 
@@ -64,6 +104,42 @@
             <div id="info">
                 <span id="version">v0.1.0</span>
                 <span id="resolution">640×480</span>
+                <span class="separator">|</span>
+                <span id="fps-display" title="Processing FPS">-- fps</span>
+                <span id="latency-display" title="Pipeline latency">-- ms</span>
+                <button id="toggle-stats" class="btn-link" title="Toggle detailed stats">📊</button>
+            </div>
+            <div id="stats-panel" class="stats-panel hidden">
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Capture</span>
+                        <span class="stat-value" id="stat-capture">-- ms</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Transform</span>
+                        <span class="stat-value" id="stat-transform">-- ms</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Output</span>
+                        <span class="stat-value" id="stat-output">-- ms</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Preview</span>
+                        <span class="stat-value" id="stat-preview">-- ms</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Pipeline</span>
+                        <span class="stat-value" id="stat-pipeline">-- ms</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Frames</span>
+                        <span class="stat-value" id="stat-frames">--</span>
+                    </div>
+                </div>
+                <div class="stats-actions">
+                    <button id="reset-stats-btn" class="btn btn-small btn-secondary">Reset Stats</button>
+                    <span id="preview-status" class="preview-status">Preview: --</span>
+                </div>
             </div>
         </footer>
     </div>

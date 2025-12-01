@@ -12,10 +12,13 @@ use parking_lot::RwLock;
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::calibration::{calibration_to_ui_points, update_calibration_point, CalibrationPoint};
+use crate::camera_controls::{CameraControl, CameraControlsManager, ControlValue};
 use crate::config::{Calibration, Config};
 use crate::transform::PerspectiveTransform;
 
@@ -23,6 +26,40 @@ use crate::transform::PerspectiveTransform;
 #[derive(RustEmbed)]
 #[folder = "static/"]
 struct StaticAssets;
+
+/// Performance statistics
+#[derive(Debug, Default)]
+pub struct PerformanceStats {
+    /// Number of frames processed
+    pub frames_processed: AtomicU64,
+    /// Total capture time in microseconds
+    pub total_capture_us: AtomicU64,
+    /// Total transform time in microseconds
+    pub total_transform_us: AtomicU64,
+    /// Total output write time in microseconds
+    pub total_output_us: AtomicU64,
+    /// Total preview encode time in microseconds
+    pub total_preview_encode_us: AtomicU64,
+    /// Frames where preview was encoded
+    pub preview_frames_encoded: AtomicU64,
+    /// Start time for FPS calculation
+    pub start_time: RwLock<Option<Instant>>,
+    /// Last frame timestamp for latency tracking
+    pub last_frame_time: RwLock<Option<Instant>>,
+}
+
+impl PerformanceStats {
+    pub fn reset(&self) {
+        self.frames_processed.store(0, Ordering::Relaxed);
+        self.total_capture_us.store(0, Ordering::Relaxed);
+        self.total_transform_us.store(0, Ordering::Relaxed);
+        self.total_output_us.store(0, Ordering::Relaxed);
+        self.total_preview_encode_us.store(0, Ordering::Relaxed);
+        self.preview_frames_encoded.store(0, Ordering::Relaxed);
+        *self.start_time.write() = Some(Instant::now());
+        *self.last_frame_time.write() = None;
+    }
+}
 
 /// Shared application state
 pub struct AppState {
@@ -39,14 +76,28 @@ pub struct AppState {
     /// Frame dimensions
     width: u32,
     height: u32,
+    /// Input device path (for camera controls)
+    input_device: String,
+    /// Camera controls manager
+    camera_controls: RwLock<Option<CameraControlsManager>>,
+    /// Whether preview clients are connected (enables preview encoding)
+    preview_clients_active: AtomicBool,
+    /// Performance statistics
+    pub stats: PerformanceStats,
 }
 
 impl AppState {
     pub fn new(config: Arc<RwLock<Config>>, config_path: PathBuf, width: u32, height: u32) -> Self {
-        let transform = {
+        let (transform, input_device) = {
             let cfg = config.read();
-            PerspectiveTransform::from_calibration(&cfg.calibration, width, height)
+            (
+                PerspectiveTransform::from_calibration(&cfg.calibration, width, height),
+                cfg.video.input_device.clone(),
+            )
         };
+
+        let stats = PerformanceStats::default();
+        *stats.start_time.write() = Some(Instant::now());
 
         Self {
             config,
@@ -56,7 +107,98 @@ impl AppState {
             raw_preview_frame: RwLock::new(Vec::new()),
             width,
             height,
+            input_device,
+            camera_controls: RwLock::new(None),
+            preview_clients_active: AtomicBool::new(false),
+            stats,
         }
+    }
+
+    /// Initialize camera controls (should be called after camera is opened)
+    pub fn init_camera_controls(&self) -> Result<()> {
+        let mut manager = CameraControlsManager::new(&self.input_device);
+        manager.query_controls()?;
+
+        // Apply saved settings from config
+        {
+            let config = self.config.read();
+            for (name, value) in &config.camera.controls {
+                let name_normalized = name.to_lowercase().replace('_', " ");
+                if let Some(control) = manager
+                    .get_controls()
+                    .iter()
+                    .find(|c| c.name.to_lowercase() == name_normalized)
+                {
+                    if control.flags.read_only || control.flags.inactive {
+                        continue;
+                    }
+
+                    let ctrl_value =
+                        if control.control_type == crate::camera_controls::ControlType::Boolean {
+                            ControlValue::Boolean(*value != 0)
+                        } else {
+                            ControlValue::Integer(*value)
+                        };
+
+                    if let Err(e) = manager.set_control(control.id, ctrl_value) {
+                        tracing::warn!("Failed to apply saved camera setting '{}': {}", name, e);
+                    }
+                }
+            }
+        }
+
+        *self.camera_controls.write() = Some(manager);
+        Ok(())
+    }
+
+    /// Get camera controls
+    pub fn get_camera_controls(&self) -> Option<Vec<CameraControl>> {
+        self.camera_controls
+            .read()
+            .as_ref()
+            .map(|m| m.get_controls().clone())
+    }
+
+    /// Set a camera control value
+    pub fn set_camera_control(&self, id: u32, value: ControlValue) -> Result<()> {
+        let mut controls = self.camera_controls.write();
+        if let Some(manager) = controls.as_mut() {
+            manager.set_control(id, value.clone())?;
+
+            // Update config with new value
+            if let Some(control) = manager.get_control(id) {
+                let key = control.name.to_lowercase().replace(' ', "_");
+                if let Some(val) = value.as_i64() {
+                    let mut config = self.config.write();
+                    config.camera.controls.insert(key, val);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Reset camera controls to defaults
+    pub fn reset_camera_controls(&self) -> Result<()> {
+        let mut controls = self.camera_controls.write();
+        if let Some(manager) = controls.as_mut() {
+            manager.reset_all_controls()?;
+
+            // Clear saved settings
+            {
+                let mut config = self.config.write();
+                config.camera.controls.clear();
+            }
+        }
+        Ok(())
+    }
+
+    /// Refresh camera control values
+    pub fn refresh_camera_controls(&self) -> Result<()> {
+        let mut controls = self.camera_controls.write();
+        if let Some(manager) = controls.as_mut() {
+            manager.refresh_values()?;
+        }
+        Ok(())
     }
 
     /// Get the current perspective transform
@@ -96,6 +238,37 @@ impl AppState {
         self.raw_preview_frame.read().clone()
     }
 
+    /// Check if preview encoding should be active
+    pub fn should_encode_preview(&self) -> bool {
+        self.preview_clients_active.load(Ordering::Relaxed)
+    }
+
+    /// Set preview client active state
+    pub fn set_preview_active(&self, active: bool) {
+        self.preview_clients_active.store(active, Ordering::Relaxed);
+    }
+
+    /// Record frame timing stats
+    pub fn record_frame_stats(
+        &self,
+        capture_us: u64,
+        transform_us: u64,
+        output_us: u64,
+        preview_encode_us: Option<u64>,
+    ) {
+        self.stats.frames_processed.fetch_add(1, Ordering::Relaxed);
+        self.stats.total_capture_us.fetch_add(capture_us, Ordering::Relaxed);
+        self.stats.total_transform_us.fetch_add(transform_us, Ordering::Relaxed);
+        self.stats.total_output_us.fetch_add(output_us, Ordering::Relaxed);
+
+        if let Some(preview_us) = preview_encode_us {
+            self.stats.total_preview_encode_us.fetch_add(preview_us, Ordering::Relaxed);
+            self.stats.preview_frames_encoded.fetch_add(1, Ordering::Relaxed);
+        }
+
+        *self.stats.last_frame_time.write() = Some(Instant::now());
+    }
+
     /// Save configuration to file
     pub fn save_config(&self) -> Result<()> {
         let config = self.config.read();
@@ -130,7 +303,7 @@ pub async fn run_server(addr: &str, state: Arc<AppState>) -> Result<()> {
         // Static files and UI
         .route("/", get(index_handler))
         .route("/static/*path", get(static_handler))
-        // API endpoints
+        // API endpoints - Calibration
         .route("/api/calibration", get(get_calibration))
         .route("/api/calibration", post(set_calibration))
         .route("/api/calibration/point/:id", post(update_point))
@@ -140,12 +313,21 @@ pub async fn run_server(addr: &str, state: Arc<AppState>) -> Result<()> {
         .route("/api/calibration/save", post(save_calibration))
         .route("/api/calibration/enable", post(enable_calibration))
         .route("/api/calibration/disable", post(disable_calibration))
+        // API endpoints - Camera Controls
+        .route("/api/camera/controls", get(get_camera_controls))
+        .route("/api/camera/control/:id", post(set_camera_control))
+        .route("/api/camera/controls/reset", post(reset_camera_controls))
+        .route("/api/camera/controls/refresh", post(refresh_camera_controls))
         // Preview streams
         .route("/api/preview", get(get_preview))
         .route("/api/preview/raw", get(get_raw_preview))
         .route("/api/preview/stream", get(preview_stream))
-        // System info
+        // System info and stats
         .route("/api/info", get(get_info))
+        .route("/api/stats", get(get_stats))
+        .route("/api/stats/reset", post(reset_stats))
+        .route("/api/preview/activate", post(activate_preview))
+        .route("/api/preview/deactivate", post(deactivate_preview))
         .layer(cors)
         .with_state(state);
 
@@ -409,16 +591,208 @@ struct InfoResponse {
     width: u32,
     height: u32,
     calibration_enabled: bool,
+    camera_controls_available: bool,
 }
 
 /// Get system information
 async fn get_info(State(state): State<Arc<AppState>>) -> Json<InfoResponse> {
     let config = state.config.read();
+    let has_controls = state.camera_controls.read().is_some();
 
     Json(InfoResponse {
         version: env!("CARGO_PKG_VERSION").to_string(),
         width: state.width,
         height: state.height,
         calibration_enabled: config.calibration.enabled,
+        camera_controls_available: has_controls,
     })
+}
+
+// ============================================================================
+// Camera Controls API
+// ============================================================================
+
+/// Camera controls response
+#[derive(Serialize)]
+struct CameraControlsResponse {
+    available: bool,
+    controls: Vec<CameraControl>,
+}
+
+/// Get all camera controls
+async fn get_camera_controls(State(state): State<Arc<AppState>>) -> Json<CameraControlsResponse> {
+    match state.get_camera_controls() {
+        Some(controls) => Json(CameraControlsResponse {
+            available: true,
+            controls,
+        }),
+        None => Json(CameraControlsResponse {
+            available: false,
+            controls: Vec::new(),
+        }),
+    }
+}
+
+/// Request to set a camera control
+#[derive(Deserialize)]
+struct SetCameraControlRequest {
+    value: serde_json::Value,
+}
+
+/// Set a camera control value
+async fn set_camera_control(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<u32>,
+    Json(req): Json<SetCameraControlRequest>,
+) -> impl IntoResponse {
+    // Convert JSON value to ControlValue
+    let control_value = match &req.value {
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                ControlValue::Integer(i)
+            } else if let Some(f) = n.as_f64() {
+                ControlValue::Integer(f as i64)
+            } else {
+                return (StatusCode::BAD_REQUEST, "Invalid number value").into_response();
+            }
+        }
+        serde_json::Value::Bool(b) => ControlValue::Boolean(*b),
+        serde_json::Value::String(s) => {
+            // Try to parse as integer first (for menu values sent as strings)
+            if let Ok(i) = s.parse::<i64>() {
+                ControlValue::Integer(i)
+            } else {
+                ControlValue::String(s.clone())
+            }
+        }
+        _ => return (StatusCode::BAD_REQUEST, "Invalid value type").into_response(),
+    };
+
+    match state.set_camera_control(id, control_value) {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// Reset all camera controls to defaults
+async fn reset_camera_controls(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match state.reset_camera_controls() {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// Refresh camera control values from hardware
+async fn refresh_camera_controls(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match state.refresh_camera_controls() {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// ============================================================================
+// Performance Stats API
+// ============================================================================
+
+/// Performance statistics response
+#[derive(Serialize)]
+struct StatsResponse {
+    /// Frames per second
+    fps: f64,
+    /// Total frames processed since last reset
+    frames_processed: u64,
+    /// Preview encoding active
+    preview_active: bool,
+    /// Frames where preview was encoded
+    preview_frames_encoded: u64,
+    /// Timing breakdown (in milliseconds)
+    timing: TimingStats,
+    /// Time since stats reset (seconds)
+    uptime_secs: f64,
+}
+
+#[derive(Serialize)]
+struct TimingStats {
+    /// Average capture time per frame (ms)
+    avg_capture_ms: f64,
+    /// Average transform time per frame (ms)
+    avg_transform_ms: f64,
+    /// Average output write time per frame (ms)
+    avg_output_ms: f64,
+    /// Average preview encode time per frame (ms) - only when encoding
+    avg_preview_encode_ms: f64,
+    /// Total pipeline time per frame (ms) - excluding preview
+    avg_pipeline_ms: f64,
+    /// Total pipeline time with preview (ms)
+    avg_pipeline_with_preview_ms: f64,
+}
+
+/// Get performance statistics
+async fn get_stats(State(state): State<Arc<AppState>>) -> Json<StatsResponse> {
+    let frames = state.stats.frames_processed.load(Ordering::Relaxed);
+    let preview_frames = state.stats.preview_frames_encoded.load(Ordering::Relaxed);
+
+    let capture_us = state.stats.total_capture_us.load(Ordering::Relaxed);
+    let transform_us = state.stats.total_transform_us.load(Ordering::Relaxed);
+    let output_us = state.stats.total_output_us.load(Ordering::Relaxed);
+    let preview_us = state.stats.total_preview_encode_us.load(Ordering::Relaxed);
+
+    let start_time = state.stats.start_time.read();
+    let uptime_secs = start_time
+        .map(|t| t.elapsed().as_secs_f64())
+        .unwrap_or(0.0);
+
+    let fps = if uptime_secs > 0.0 {
+        frames as f64 / uptime_secs
+    } else {
+        0.0
+    };
+
+    // Calculate averages (convert from microseconds to milliseconds)
+    let frames_f = frames.max(1) as f64;
+    let preview_frames_f = preview_frames.max(1) as f64;
+
+    let avg_capture_ms = (capture_us as f64 / frames_f) / 1000.0;
+    let avg_transform_ms = (transform_us as f64 / frames_f) / 1000.0;
+    let avg_output_ms = (output_us as f64 / frames_f) / 1000.0;
+    let avg_preview_encode_ms = (preview_us as f64 / preview_frames_f) / 1000.0;
+
+    let avg_pipeline_ms = avg_capture_ms + avg_transform_ms + avg_output_ms;
+    let avg_pipeline_with_preview_ms = avg_pipeline_ms + avg_preview_encode_ms;
+
+    Json(StatsResponse {
+        fps,
+        frames_processed: frames,
+        preview_active: state.preview_clients_active.load(Ordering::Relaxed),
+        preview_frames_encoded: preview_frames,
+        timing: TimingStats {
+            avg_capture_ms,
+            avg_transform_ms,
+            avg_output_ms,
+            avg_preview_encode_ms,
+            avg_pipeline_ms,
+            avg_pipeline_with_preview_ms,
+        },
+        uptime_secs,
+    })
+}
+
+/// Reset performance statistics
+async fn reset_stats(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    state.stats.reset();
+    StatusCode::OK
+}
+
+/// Activate preview encoding (called when UI opens)
+async fn activate_preview(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    state.set_preview_active(true);
+    tracing::info!("Preview encoding activated (client connected)");
+    StatusCode::OK
+}
+
+/// Deactivate preview encoding (called when UI closes)
+async fn deactivate_preview(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    state.set_preview_active(false);
+    tracing::info!("Preview encoding deactivated (client disconnected)");
+    StatusCode::OK
 }

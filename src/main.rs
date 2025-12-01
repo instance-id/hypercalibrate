@@ -5,6 +5,7 @@
 //! corrected video to a virtual camera device for Hyperion to consume.
 
 mod calibration;
+mod camera_controls;
 mod capture;
 mod config;
 mod output;

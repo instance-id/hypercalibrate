@@ -71,6 +71,14 @@ pub fn run_pipeline(
 
     info!("Output: {}", output.info());
 
+    // Initialize camera controls now that the device is open
+    if let Err(e) = state.init_camera_controls() {
+        warn!("Failed to initialize camera controls: {}", e);
+        warn!("Camera control adjustment will not be available");
+    } else {
+        info!("Camera controls initialized successfully");
+    }
+
     // Create the capture stream with memory mapping
     let mut stream = Stream::with_buffers(&dev, Type::VideoCapture, 4)
         .context("Failed to create capture stream")?;
@@ -103,9 +111,14 @@ pub fn run_pipeline(
         is_mjpeg, is_yuyv, is_rgb, is_bgr);
 
     loop {
+        // Timing: Capture
+        let capture_start = Instant::now();
+        
         // Capture a frame
         let (buf, _meta) = stream.next()
             .context("Failed to capture frame")?;
+        
+        let capture_us = capture_start.elapsed().as_micros() as u64;
 
         // Get current transform from shared state
         let transform = state.get_transform();
@@ -115,6 +128,9 @@ pub fn run_pipeline(
             let config = state.config.read();
             config.calibration.enabled
         };
+
+        // Timing: Transform/conversion
+        let transform_start = Instant::now();
 
         // Convert input to RGB for processing
         let working_rgb = if is_mjpeg {
@@ -151,6 +167,11 @@ pub fn run_pipeline(
             working_rgb
         };
 
+        let transform_us = transform_start.elapsed().as_micros() as u64;
+
+        // Timing: Output write
+        let output_start = Instant::now();
+
         // Write to virtual camera (the output module handles format conversion)
         if let Err(e) = output.write_frame_rgb(output_rgb) {
             if frame_count % 100 == 0 {
@@ -158,11 +179,20 @@ pub fn run_pipeline(
             }
         }
 
-        // Update preview for web UI (at reduced rate to save bandwidth)
-        if frame_count % 3 == 0 {
+        let output_us = output_start.elapsed().as_micros() as u64;
+
+        // Update preview for web UI (only if clients are connected)
+        let preview_encode_us = if state.should_encode_preview() && frame_count % 3 == 0 {
+            let preview_start = Instant::now();
             state.update_preview(output_rgb, format.width, format.height);
             state.update_raw_preview(working_rgb, format.width, format.height);
-        }
+            Some(preview_start.elapsed().as_micros() as u64)
+        } else {
+            None
+        };
+
+        // Record stats
+        state.record_frame_stats(capture_us, transform_us, output_us, preview_encode_us);
 
         frame_count += 1;
 
@@ -170,7 +200,9 @@ pub fn run_pipeline(
         if last_stats_time.elapsed() >= stats_interval {
             let elapsed = last_stats_time.elapsed().as_secs_f64();
             let fps_actual = frame_count as f64 / elapsed;
-            info!("Performance: {:.1} fps ({} frames in {:.1}s)", fps_actual, frame_count, elapsed);
+            let preview_status = if state.should_encode_preview() { "active" } else { "inactive" };
+            info!("Performance: {:.1} fps ({} frames in {:.1}s, preview {})", 
+                fps_actual, frame_count, elapsed, preview_status);
             frame_count = 0;
             last_stats_time = Instant::now();
         }

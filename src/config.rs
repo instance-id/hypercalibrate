@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 
 /// A 2D point with normalized coordinates (0.0 to 1.0)
@@ -248,6 +249,18 @@ pub struct Config {
 
     #[serde(default)]
     pub calibration: Calibration,
+
+    #[serde(default)]
+    pub camera: CameraConfig,
+}
+
+/// Camera hardware control settings
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CameraConfig {
+    /// Stored control values by normalized control name
+    /// e.g., "brightness" -> 128, "contrast" -> 32
+    #[serde(default)]
+    pub controls: HashMap<String, i64>,
 }
 
 impl Config {

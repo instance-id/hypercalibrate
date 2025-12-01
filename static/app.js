@@ -24,6 +24,11 @@ class HyperCalibrate {
         this.previewElement = null;
         this.overlayElement = null;
         this.refreshInterval = null;
+        this.statsInterval = null;
+        this.cameraControls = [];
+        this.cameraPanelVisible = false;
+        this.statsPanelVisible = false;
+        this.livePreviewEnabled = false;  // Start with snapshot mode
 
         this.edgeCorners = [
             [0, 1],
@@ -39,13 +44,35 @@ class HyperCalibrate {
         this.previewElement = document.getElementById('preview');
         this.overlayElement = document.getElementById('calibration-overlay');
         this.previewWrapper = document.getElementById('preview-wrapper');
+        this.previewContainer = document.querySelector('.preview-container');
         this.statusElement = document.getElementById('status');
+        this.cameraPanelElement = document.getElementById('camera-panel');
 
         this.setupEventListeners();
+
         await this.loadInfo();
         await this.loadCalibration();
-        this.startPreviewRefresh();
+        await this.loadCameraControls();
+
+        // Capture initial snapshot (don't start live preview by default)
+        await this.captureSnapshot();
+
+        this.startStatsRefresh();
         this.setStatus('Connected', 'connected');
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.stopLivePreview();
+            } else if (this.livePreviewEnabled) {
+                this.startLivePreview();
+            }
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            this.stopLivePreview();
+        });
     }
 
     setupEventListeners() {
@@ -55,6 +82,19 @@ class HyperCalibrate {
 
         document.getElementById('show-corrected').addEventListener('change', (e) => {
             this.showCorrected = e.target.checked;
+            // If not in live mode, capture a new snapshot with new setting
+            if (!this.livePreviewEnabled) {
+                this.captureSnapshot();
+            }
+        });
+
+        // Preview controls
+        document.getElementById('capture-snapshot-btn').addEventListener('click', () => {
+            this.captureSnapshot();
+        });
+
+        document.getElementById('live-preview-enabled').addEventListener('change', (e) => {
+            this.toggleLivePreview(e.target.checked);
         });
 
         document.getElementById('reset-btn').addEventListener('click', () => {
@@ -65,6 +105,32 @@ class HyperCalibrate {
             this.saveCalibration();
         });
 
+        // Camera panel controls
+        document.getElementById('toggle-camera-panel').addEventListener('click', () => {
+            this.toggleCameraPanel();
+        });
+
+        document.getElementById('close-camera-panel').addEventListener('click', () => {
+            this.toggleCameraPanel(false);
+        });
+
+        document.getElementById('reset-camera-btn').addEventListener('click', () => {
+            this.resetCameraControls();
+        });
+
+        document.getElementById('refresh-camera-btn').addEventListener('click', () => {
+            this.refreshCameraControls();
+        });
+
+        // Stats panel controls
+        document.getElementById('toggle-stats').addEventListener('click', () => {
+            this.toggleStatsPanel();
+        });
+
+        document.getElementById('reset-stats-btn').addEventListener('click', () => {
+            this.resetStats();
+        });
+
         this.previewElement.addEventListener('load', () => {
             this.syncOverlaySize();
         });
@@ -72,6 +138,19 @@ class HyperCalibrate {
         window.addEventListener('resize', () => {
             this.syncOverlaySize();
         });
+
+        // Use ResizeObserver for more robust overlay syncing
+        // This catches layout changes from panel toggles, etc.
+        if (typeof ResizeObserver !== 'undefined') {
+            const resizeObserver = new ResizeObserver(() => {
+                this.syncOverlaySize();
+            });
+            resizeObserver.observe(this.previewWrapper);
+            // Also observe the container for height changes
+            if (this.previewContainer) {
+                resizeObserver.observe(this.previewContainer);
+            }
+        }
 
         this.overlayElement.addEventListener('mousedown', (e) => this.onPointerDown(e));
         this.overlayElement.addEventListener('mousemove', (e) => this.onPointerMove(e));
@@ -211,37 +290,107 @@ class HyperCalibrate {
 
     syncOverlaySize() {
         const img = this.previewElement;
-        const wrapper = this.previewWrapper;
 
-        if (!img.complete || !img.naturalWidth) return;
+        // Wait for image to be loaded and have dimensions
+        if (!img.complete || !img.naturalWidth || !img.naturalHeight) return;
 
-        const containerWidth = wrapper.clientWidth;
-        const containerHeight = wrapper.clientHeight;
-        const imgAspect = img.naturalWidth / img.naturalHeight;
-        const containerAspect = containerWidth / containerHeight;
+        // Get the actual rendered size of the image
+        const imgRect = img.getBoundingClientRect();
+        const wrapperRect = this.previewWrapper.getBoundingClientRect();
 
-        let displayWidth, displayHeight;
-        if (imgAspect > containerAspect) {
-            displayWidth = containerWidth;
-            displayHeight = containerWidth / imgAspect;
-        } else {
-            displayHeight = containerHeight;
-            displayWidth = containerHeight * imgAspect;
-        }
+        // Calculate offset from wrapper to center the overlay on the image
+        const offsetLeft = imgRect.left - wrapperRect.left;
+        const offsetTop = imgRect.top - wrapperRect.top;
 
-        this.overlayElement.style.width = displayWidth + 'px';
-        this.overlayElement.style.height = displayHeight + 'px';
-        this.overlayElement.style.left = ((containerWidth - displayWidth) / 2) + 'px';
-        this.overlayElement.style.top = ((containerHeight - displayHeight) / 2) + 'px';
+        // Set overlay to match exact image position and size
+        this.overlayElement.style.width = imgRect.width + 'px';
+        this.overlayElement.style.height = imgRect.height + 'px';
+        this.overlayElement.style.left = offsetLeft + 'px';
+        this.overlayElement.style.top = offsetTop + 'px';
     }
 
-    startPreviewRefresh() {
-        this.refreshInterval = setInterval(() => {
-            this.refreshPreview();
-        }, 100);
+    // ========================================================================
+    // Preview Control (Snapshot vs Live)
+    // ========================================================================
+
+    async captureSnapshot() {
+        const timestamp = Date.now();
+        const src = this.showCorrected
+            ? '/api/preview?t=' + timestamp
+            : '/api/preview/raw?t=' + timestamp;
+
+        // Activate preview encoding temporarily to get a fresh frame
+        try {
+            await fetch('/api/preview/activate', { method: 'POST' });
+
+            // Small delay to ensure a frame is encoded
+            await new Promise(resolve => setTimeout(resolve, 150));
+
+            const newImg = new Image();
+            newImg.onload = () => {
+                this.previewElement.src = newImg.src;
+                // Sync overlay after image loads
+                requestAnimationFrame(() => this.syncOverlaySize());
+            };
+            newImg.src = src;
+
+            // If not in live mode, deactivate after capturing
+            if (!this.livePreviewEnabled) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await fetch('/api/preview/deactivate', { method: 'POST' });
+            }
+        } catch (error) {
+            console.error('Failed to capture snapshot:', error);
+        }
+    }
+
+    toggleLivePreview(enabled) {
+        this.livePreviewEnabled = enabled;
+
+        if (enabled) {
+            this.startLivePreview();
+            this.showToast('Live preview enabled', 'success');
+        } else {
+            this.stopLivePreview();
+            this.showToast('Live preview disabled - using snapshots', 'success');
+        }
+    }
+
+    async startLivePreview() {
+        // Activate server-side encoding
+        try {
+            await fetch('/api/preview/activate', { method: 'POST' });
+        } catch (error) {
+            console.error('Failed to activate preview:', error);
+        }
+
+        // Start refresh interval
+        if (!this.refreshInterval) {
+            this.refreshInterval = setInterval(() => {
+                this.refreshPreview();
+            }, 100);
+        }
+    }
+
+    stopLivePreview() {
+        // Stop refresh interval
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+            this.refreshInterval = null;
+        }
+
+        // Deactivate server-side encoding
+        try {
+            navigator.sendBeacon('/api/preview/deactivate');
+        } catch (error) {
+            // Fallback for browsers that don't support sendBeacon
+            fetch('/api/preview/deactivate', { method: 'POST' }).catch(() => {});
+        }
     }
 
     refreshPreview() {
+        if (!this.livePreviewEnabled) return;
+
         const timestamp = Date.now();
         const src = this.showCorrected
             ? '/api/preview?t=' + timestamp
@@ -434,6 +583,391 @@ class HyperCalibrate {
             this.showToast('Failed to save calibration', 'error');
         }
     }
+
+    // ========================================================================
+    // Camera Controls
+    // ========================================================================
+
+    toggleCameraPanel(show) {
+        if (show === undefined) {
+            show = !this.cameraPanelVisible;
+        }
+        this.cameraPanelVisible = show;
+
+        if (show) {
+            this.cameraPanelElement.classList.remove('hidden');
+            this.loadCameraControls();
+        } else {
+            this.cameraPanelElement.classList.add('hidden');
+        }
+        // Re-sync overlay after layout change
+        requestAnimationFrame(() => this.syncOverlaySize());
+    }
+
+    async loadCameraControls() {
+        const loadingEl = document.getElementById('camera-controls-loading');
+        const containerEl = document.getElementById('camera-controls-container');
+        const unavailableEl = document.getElementById('camera-controls-unavailable');
+
+        loadingEl.classList.remove('hidden');
+        containerEl.classList.add('hidden');
+        unavailableEl.classList.add('hidden');
+
+        try {
+            const response = await fetch('/api/camera/controls');
+            const data = await response.json();
+
+            loadingEl.classList.add('hidden');
+
+            if (!data.available || data.controls.length === 0) {
+                unavailableEl.classList.remove('hidden');
+                return;
+            }
+
+            this.cameraControls = data.controls;
+            this.renderCameraControls();
+            containerEl.classList.remove('hidden');
+        } catch (error) {
+            console.error('Failed to load camera controls:', error);
+            loadingEl.classList.add('hidden');
+            unavailableEl.classList.remove('hidden');
+        }
+    }
+
+    renderCameraControls() {
+        const container = document.getElementById('camera-controls-container');
+        container.innerHTML = '';
+
+        // Group controls by category (based on ID ranges)
+        const userControls = [];
+        const cameraControls = [];
+
+        for (const control of this.cameraControls) {
+            // Skip disabled or inactive controls
+            if (control.flags.disabled) continue;
+
+            // Camera class controls have IDs starting with 0x009a
+            if (control.id >= 0x009a0000 && control.id < 0x009b0000) {
+                cameraControls.push(control);
+            } else {
+                userControls.push(control);
+            }
+        }
+
+        // Render user controls
+        if (userControls.length > 0) {
+            const category = this.createControlCategory('Image Controls', userControls);
+            container.appendChild(category);
+        }
+
+        // Render camera controls
+        if (cameraControls.length > 0) {
+            const category = this.createControlCategory('Camera Controls', cameraControls);
+            container.appendChild(category);
+        }
+    }
+
+    createControlCategory(title, controls) {
+        const categoryEl = document.createElement('div');
+        categoryEl.className = 'control-category';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'control-category-title';
+        titleEl.textContent = title;
+        categoryEl.appendChild(titleEl);
+
+        for (const control of controls) {
+            const controlEl = this.createControlElement(control);
+            categoryEl.appendChild(controlEl);
+        }
+
+        return categoryEl;
+    }
+
+    createControlElement(control) {
+        const el = document.createElement('div');
+        el.className = 'camera-control';
+        el.dataset.controlId = control.id;
+
+        if (control.flags.inactive) {
+            el.classList.add('inactive');
+        }
+
+        const header = document.createElement('div');
+        header.className = 'camera-control-header';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'camera-control-name';
+        nameEl.textContent = this.formatControlName(control.name);
+        header.appendChild(nameEl);
+
+        const valueEl = document.createElement('span');
+        valueEl.className = 'camera-control-value';
+        valueEl.id = 'camera-value-' + control.id;
+        header.appendChild(valueEl);
+
+        el.appendChild(header);
+
+        // Create appropriate input based on control type
+        switch (control.type) {
+            case 'boolean':
+                el.appendChild(this.createBooleanControl(control, valueEl));
+                break;
+            case 'menu':
+            case 'integermenu':
+                el.appendChild(this.createMenuControl(control, valueEl));
+                break;
+            case 'integer':
+            case 'integer64':
+            default:
+                el.appendChild(this.createSliderControl(control, valueEl));
+                break;
+        }
+
+        return el;
+    }
+
+    createSliderControl(control, valueEl) {
+        const wrapper = document.createElement('div');
+
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.className = 'camera-control-slider';
+        slider.min = control.minimum;
+        slider.max = control.maximum;
+        slider.step = control.step || 1;
+        slider.value = this.getControlValue(control);
+
+        valueEl.textContent = slider.value;
+
+        slider.addEventListener('input', (e) => {
+            valueEl.textContent = e.target.value;
+        });
+
+        slider.addEventListener('change', (e) => {
+            this.setCameraControl(control.id, parseInt(e.target.value));
+        });
+
+        wrapper.appendChild(slider);
+
+        // Add min/max labels
+        const metaEl = document.createElement('div');
+        metaEl.className = 'camera-control-meta';
+        metaEl.innerHTML = `<span>${control.minimum}</span><span>Default: ${control.default}</span><span>${control.maximum}</span>`;
+        wrapper.appendChild(metaEl);
+
+        return wrapper;
+    }
+
+    createBooleanControl(control, valueEl) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'camera-control-toggle';
+
+        const toggle = document.createElement('label');
+        toggle.className = 'toggle';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = this.getControlValue(control) === true || this.getControlValue(control) === 1;
+
+        valueEl.textContent = checkbox.checked ? 'On' : 'Off';
+
+        checkbox.addEventListener('change', (e) => {
+            valueEl.textContent = e.target.checked ? 'On' : 'Off';
+            this.setCameraControl(control.id, e.target.checked);
+        });
+
+        const slider = document.createElement('span');
+        slider.className = 'toggle-slider';
+
+        toggle.appendChild(checkbox);
+        toggle.appendChild(slider);
+        wrapper.appendChild(toggle);
+
+        return wrapper;
+    }
+
+    createMenuControl(control, valueEl) {
+        const select = document.createElement('select');
+        select.className = 'camera-control-select';
+
+        if (control.menu_items) {
+            for (const item of control.menu_items) {
+                const option = document.createElement('option');
+                option.value = item.index;
+                option.textContent = item.label;
+                select.appendChild(option);
+            }
+        }
+
+        const currentValue = this.getControlValue(control);
+        select.value = currentValue;
+
+        const selectedOption = select.options[select.selectedIndex];
+        valueEl.textContent = selectedOption ? selectedOption.textContent : currentValue;
+
+        select.addEventListener('change', (e) => {
+            const selectedOpt = e.target.options[e.target.selectedIndex];
+            valueEl.textContent = selectedOpt ? selectedOpt.textContent : e.target.value;
+            this.setCameraControl(control.id, parseInt(e.target.value));
+        });
+
+        return select;
+    }
+
+    getControlValue(control) {
+        if (control.value === null || control.value === undefined) {
+            return control.default;
+        }
+        // Handle different value types
+        if (typeof control.value === 'object') {
+            if ('Integer' in control.value) return control.value.Integer;
+            if ('Boolean' in control.value) return control.value.Boolean;
+            if ('String' in control.value) return control.value.String;
+        }
+        return control.value;
+    }
+
+    formatControlName(name) {
+        // Convert snake_case to Title Case
+        return name
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    async setCameraControl(id, value) {
+        try {
+            const response = await fetch('/api/camera/control/' + id, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ value: value })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to set control');
+            }
+        } catch (error) {
+            console.error('Failed to set camera control:', error);
+            this.showToast('Failed to set camera control', 'error');
+        }
+    }
+
+    async resetCameraControls() {
+        try {
+            const response = await fetch('/api/camera/controls/reset', { method: 'POST' });
+            if (response.ok) {
+                await this.loadCameraControls();
+                this.showToast('Camera controls reset', 'success');
+            } else {
+                throw new Error('Reset failed');
+            }
+        } catch (error) {
+            console.error('Failed to reset camera controls:', error);
+            this.showToast('Failed to reset camera controls', 'error');
+        }
+    }
+
+    async refreshCameraControls() {
+        try {
+            await fetch('/api/camera/controls/refresh', { method: 'POST' });
+            await this.loadCameraControls();
+            this.showToast('Camera controls refreshed', 'success');
+        } catch (error) {
+            console.error('Failed to refresh camera controls:', error);
+            this.showToast('Failed to refresh camera controls', 'error');
+        }
+    }
+
+    // ========================================================================
+    // Preview & Performance Stats
+    // ========================================================================
+
+    startStatsRefresh() {
+        this.statsInterval = setInterval(() => {
+            this.loadStats();
+        }, 1000);
+    }
+
+    async loadStats() {
+        try {
+            const response = await fetch('/api/stats');
+            const stats = await response.json();
+            this.updateStatsDisplay(stats);
+        } catch (error) {
+            // Silently fail for stats - non-critical
+        }
+    }
+
+    updateStatsDisplay(stats) {
+        // Update footer stats
+        const fpsEl = document.getElementById('fps-display');
+        const latencyEl = document.getElementById('latency-display');
+
+        fpsEl.textContent = stats.fps.toFixed(1) + ' fps';
+        latencyEl.textContent = stats.timing.avg_pipeline_ms.toFixed(2) + ' ms';
+
+        // Update detailed stats panel
+        document.getElementById('stat-capture').textContent = stats.timing.avg_capture_ms.toFixed(2) + ' ms';
+        document.getElementById('stat-transform').textContent = stats.timing.avg_transform_ms.toFixed(2) + ' ms';
+        document.getElementById('stat-output').textContent = stats.timing.avg_output_ms.toFixed(2) + ' ms';
+
+        // Show preview stats only when preview is active, otherwise show N/A
+        if (stats.preview_active && stats.preview_frames_encoded > 0) {
+            document.getElementById('stat-preview').textContent = stats.timing.avg_preview_encode_ms.toFixed(2) + ' ms';
+            document.getElementById('stat-pipeline').textContent = stats.timing.avg_pipeline_with_preview_ms.toFixed(2) + ' ms';
+        } else {
+            document.getElementById('stat-preview').textContent = 'N/A';
+            // Show pipeline without preview when preview is off
+            document.getElementById('stat-pipeline').textContent = stats.timing.avg_pipeline_ms.toFixed(2) + ' ms';
+        }
+
+        document.getElementById('stat-frames').textContent = this.formatNumber(stats.frames_processed);
+
+        // Update preview status indicator
+        const previewStatusEl = document.getElementById('preview-status');
+        if (stats.preview_active) {
+            previewStatusEl.textContent = 'Encoding: Active';
+            previewStatusEl.className = 'preview-status active';
+        } else {
+            previewStatusEl.textContent = 'Encoding: Off';
+            previewStatusEl.className = 'preview-status inactive';
+        }
+    }
+
+    formatNumber(num) {
+        if (num >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'M';
+        } else if (num >= 1000) {
+            return (num / 1000).toFixed(1) + 'K';
+        }
+        return num.toString();
+    }
+
+    toggleStatsPanel() {
+        this.statsPanelVisible = !this.statsPanelVisible;
+        const panel = document.getElementById('stats-panel');
+        if (this.statsPanelVisible) {
+            panel.classList.remove('hidden');
+        } else {
+            panel.classList.add('hidden');
+        }
+        // Re-sync overlay after layout change
+        requestAnimationFrame(() => this.syncOverlaySize());
+    }
+
+    async resetStats() {
+        try {
+            await fetch('/api/stats/reset', { method: 'POST' });
+            this.showToast('Stats reset', 'success');
+        } catch (error) {
+            console.error('Failed to reset stats:', error);
+            this.showToast('Failed to reset stats', 'error');
+        }
+    }
+
+    // ========================================================================
+    // UI Helpers
+    // ========================================================================
 
     setStatus(text, className) {
         this.statusElement.textContent = text;

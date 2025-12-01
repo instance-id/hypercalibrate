@@ -20,6 +20,9 @@ HyperCalibrate is a high-performance application designed to run on Raspberry Pi
 - 🐳 **Docker Build**: Cross-compile for Raspberry Pi from any machine
 - 🔧 **One-Command Deploy**: Build and deploy to HyperBian with a single command
 
+
+<img src="./media/hypercalibrate.png" alt="hypercalibrate" height="650">
+
 ## Quick Start (Recommended)
 
 The easiest way to get started is to deploy directly to your HyperBian installation:
@@ -218,9 +221,17 @@ Optimized for Raspberry Pi 5:
 - Written in Rust with release optimizations (LTO, single codegen unit)
 - Direct V4L2 memory-mapped buffer access
 - Custom perspective transformation (no OpenCV dependency)
-- Minimal allocations in hot path
-- ~2.5MB binary size
-- Target: <10ms latency per frame
+- ~2.7MB binary size
+
+## Additional Images
+
+<details open> <summary>Show Images</summary>
+
+<img src="./media/hypercalibrate_2.png" alt="hypercalibrate_2" height="600">
+
+<img src="./media/hypercalibrate_controls.png" alt="hypercalibrate_controls" height="640">
+
+</details>
 
 ## Troubleshooting
 
