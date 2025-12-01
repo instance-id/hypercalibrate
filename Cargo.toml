@@ -23,6 +23,11 @@ image = { version = "0.24", default-features = false, features = ["jpeg", "png"]
 imageproc = "0.23"
 nalgebra = "0.32"
 jpeg-decoder = "0.3"
+# Hardware-accelerated JPEG decoding (uses libjpeg-turbo with SIMD)
+turbojpeg = "1.0"
+
+# Parallelism
+rayon = "1.10"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -57,11 +62,18 @@ arc-swap = "1"
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "fat"
 codegen-units = 1
 strip = true
+panic = "abort"
 
 [profile.release-fast]
 inherits = "release"
 lto = "thin"
 codegen-units = 4
+
+# Optimize build dependencies too
+[profile.release.build-override]
+opt-level = 3
+
+# For RPi5, build with: RUSTFLAGS="-C target-cpu=cortex-a76" cargo build --release

@@ -3,13 +3,18 @@
 
 FROM rust:latest
 
-# Install cross-compilation tools and libclang for bindgen
+# Install cross-compilation tools, cmake, and libclang for bindgen
+# g++-aarch64-linux-gnu is needed for turbojpeg-sys (libjpeg-turbo)
 RUN apt-get update && apt-get install -y \
     gcc-aarch64-linux-gnu \
+    g++-aarch64-linux-gnu \
     gcc-arm-linux-gnueabihf \
+    g++-arm-linux-gnueabihf \
     libc6-dev-arm64-cross \
     libc6-dev-armhf-cross \
     pkg-config \
+    cmake \
+    nasm \
     clang \
     libclang-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -31,5 +36,5 @@ WORKDIR /app
 # Default to 64-bit build (Raspberry Pi 5 is 64-bit)
 ENV TARGET=aarch64-unknown-linux-gnu
 
-# Build command
-CMD ["sh", "-c", "cargo build --release --target $TARGET && cp target/$TARGET/release/hypercalibrate /output/"]
+# Build command with target CPU optimization for RPi5 (Cortex-A76)
+CMD ["sh", "-c", "RUSTFLAGS='-C target-cpu=cortex-a76' cargo build --release --target $TARGET && cp target/$TARGET/release/hypercalibrate /output/"]

@@ -3,6 +3,11 @@
 //! This module handles capturing video frames from USB cameras and other V4L2 devices.
 //! It supports multiple pixel formats (YUYV, MJPEG, RGB) and automatically selects
 //! the best available format.
+//!
+//! Performance optimizations:
+//! - Uses turbojpeg for hardware-accelerated MJPEG decoding (libjpeg-turbo with SIMD)
+//! - Integer-only YUYV to RGB conversion (no floating point)
+//! - Pre-allocated buffers to avoid allocations in hot path
 
 use anyhow::{Context, Result};
 use std::sync::Arc;
@@ -17,11 +22,17 @@ use v4l::{Device, FourCC};
 use crate::output::VirtualCamera;
 use crate::server::AppState;
 
+/// Thread-local turbojpeg decompressor for hardware-accelerated MJPEG decoding
+thread_local! {
+    static JPEG_DECOMPRESSOR: std::cell::RefCell<Option<turbojpeg::Decompressor>> =
+        std::cell::RefCell::new(turbojpeg::Decompressor::new().ok());
+}
+
 /// Supported pixel formats in order of preference
-/// YUYV is preferred as it's widely supported and doesn't need decompression
+/// YUYV is preferred as it's widely supported and has consistent timing
 const PREFERRED_FORMATS: &[&[u8; 4]] = &[
-    b"YUYV", // YUV 4:2:2 - very common for USB cameras, no decompression needed
-    b"MJPG", // Motion JPEG - compressed, needs decoding but widely supported
+    b"YUYV", // YUV 4:2:2 - uncompressed, predictable timing
+    b"MJPG", // Motion JPEG - compressed, uses turbojpeg SIMD for fast decode
     b"RGB3", // RGB24 - simple but less common
     b"BGR3", // BGR24 - simple but less common
 ];
@@ -80,6 +91,7 @@ pub fn run_pipeline(
     }
 
     // Create the capture stream with memory mapping
+    // Using 4 buffers for smooth capture pipeline
     let mut stream = Stream::with_buffers(&dev, Type::VideoCapture, 4)
         .context("Failed to create capture stream")?;
 
@@ -110,15 +122,21 @@ pub fn run_pipeline(
     info!("Input format detection: MJPG={}, YUYV={}, RGB={}, BGR={}",
         is_mjpeg, is_yuyv, is_rgb, is_bgr);
 
+    // Warm up turbojpeg decompressor if using MJPEG
+    if is_mjpeg {
+        JPEG_DECOMPRESSOR.with(|_| {});
+        info!("TurboJPEG decompressor initialized");
+    }
+
     loop {
-        // Timing: Capture
-        let capture_start = Instant::now();
-        
-        // Capture a frame
+        // Timing: Frame wait (waiting for camera hardware to deliver frame)
+        let frame_wait_start = Instant::now();
+
+        // Capture a frame - this blocks until camera delivers a frame
         let (buf, _meta) = stream.next()
             .context("Failed to capture frame")?;
-        
-        let capture_us = capture_start.elapsed().as_micros() as u64;
+
+        let frame_wait_us = frame_wait_start.elapsed().as_micros() as u64;
 
         // Get current transform from shared state
         let transform = state.get_transform();
@@ -129,8 +147,8 @@ pub fn run_pipeline(
             config.calibration.enabled
         };
 
-        // Timing: Transform/conversion
-        let transform_start = Instant::now();
+        // Timing: Decode/conversion (MJPEG decode or YUYV→RGB conversion)
+        let decode_start = Instant::now();
 
         // Convert input to RGB for processing
         let working_rgb = if is_mjpeg {
@@ -158,6 +176,11 @@ pub fn run_pipeline(
             rgb_buffer[..copy_len].copy_from_slice(&buf[..copy_len]);
             &rgb_buffer[..]
         };
+
+        let decode_us = decode_start.elapsed().as_micros() as u64;
+
+        // Timing: Transform (perspective warp for calibration)
+        let transform_start = Instant::now();
 
         // Process the frame (apply calibration if enabled)
         let output_rgb = if calibration_enabled {
@@ -191,8 +214,8 @@ pub fn run_pipeline(
             None
         };
 
-        // Record stats
-        state.record_frame_stats(capture_us, transform_us, output_us, preview_encode_us);
+        // Record stats with separated timings
+        state.record_frame_stats(frame_wait_us, decode_us, transform_us, output_us, preview_encode_us);
 
         frame_count += 1;
 
@@ -201,7 +224,7 @@ pub fn run_pipeline(
             let elapsed = last_stats_time.elapsed().as_secs_f64();
             let fps_actual = frame_count as f64 / elapsed;
             let preview_status = if state.should_encode_preview() { "active" } else { "inactive" };
-            info!("Performance: {:.1} fps ({} frames in {:.1}s, preview {})", 
+            info!("Performance: {:.1} fps ({} frames in {:.1}s, preview {})",
                 fps_actual, frame_count, elapsed, preview_status);
             frame_count = 0;
             last_stats_time = Instant::now();
@@ -279,6 +302,14 @@ fn configure_capture_format(dev: &Device, width: u32, height: u32) -> Result<v4l
 
 /// Set the frame rate on the capture device
 fn set_frame_rate(dev: &Device, fps: u32) -> Result<()> {
+    // Log current parameters before change
+    if let Ok(params) = dev.params() {
+        info!("Current frame interval: {}/{} ({:.1} fps)",
+            params.interval.numerator,
+            params.interval.denominator,
+            params.interval.denominator as f64 / params.interval.numerator as f64);
+    }
+
     let mut params = dev.params()
         .context("Failed to get parameters")?;
 
@@ -287,11 +318,57 @@ fn set_frame_rate(dev: &Device, fps: u32) -> Result<()> {
     dev.set_params(&params)
         .context("Failed to set parameters")?;
 
+    // Log actual frame rate after setting
+    let actual_params = dev.params().context("Failed to read back parameters")?;
+    info!("Set frame interval to: {}/{} ({:.1} fps requested: {})",
+        actual_params.interval.numerator,
+        actual_params.interval.denominator,
+        actual_params.interval.denominator as f64 / actual_params.interval.numerator.max(1) as f64,
+        fps);
+
     Ok(())
 }
 
-/// Decode MJPEG frame to RGB
+/// Decode MJPEG frame to RGB using turbojpeg (hardware-accelerated via libjpeg-turbo)
+/// Falls back to software jpeg-decoder if turbojpeg fails
 fn decode_mjpeg<'a>(mjpeg_data: &[u8], rgb_buffer: &'a mut [u8], width: usize, height: usize) -> Result<&'a [u8], ()> {
+    let expected_size = width * height * 3;
+
+    // Try hardware-accelerated turbojpeg first
+    let turbo_result = JPEG_DECOMPRESSOR.with(|decomp| {
+        if let Some(ref mut decompressor) = *decomp.borrow_mut() {
+            // Read JPEG header to get actual dimensions
+            if let Ok(header) = decompressor.read_header(mjpeg_data) {
+                let jpeg_width = header.width;
+                let jpeg_height = header.height;
+
+                // Decompress directly to RGB
+                let image = turbojpeg::Image {
+                    pixels: &mut rgb_buffer[..expected_size],
+                    width: jpeg_width,
+                    pitch: jpeg_width * 3,
+                    height: jpeg_height,
+                    format: turbojpeg::PixelFormat::RGB,
+                };
+
+                if decompressor.decompress(mjpeg_data, image).is_ok() {
+                    return Some(());
+                }
+            }
+        }
+        None
+    });
+
+    if turbo_result.is_some() {
+        return Ok(&rgb_buffer[..expected_size]);
+    }
+
+    // Fallback to software decoder
+    decode_mjpeg_software(mjpeg_data, rgb_buffer, width, height)
+}
+
+/// Software fallback MJPEG decoder using jpeg-decoder crate
+fn decode_mjpeg_software<'a>(mjpeg_data: &[u8], rgb_buffer: &'a mut [u8], width: usize, height: usize) -> Result<&'a [u8], ()> {
     use std::io::Cursor;
 
     let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(mjpeg_data));
@@ -327,11 +404,14 @@ fn decode_mjpeg<'a>(mjpeg_data: &[u8], rgb_buffer: &'a mut [u8], width: usize, h
     Ok(&rgb_buffer[..expected_size.min(rgb_buffer.len())])
 }
 
-/// Convert YUYV to RGB
+/// Convert YUYV to RGB using fast integer math (no floating point)
+/// Uses fixed-point arithmetic with 8-bit shift for BT.601 color conversion
+/// This is significantly faster than floating-point on ARM processors
 #[inline]
 pub fn yuyv_to_rgb(yuyv: &[u8], rgb: &mut [u8], width: usize, height: usize) {
     let pixels = width * height;
 
+    // Process 2 pixels at a time (4 bytes YUYV -> 6 bytes RGB)
     for i in 0..(pixels / 2) {
         let yuyv_offset = i * 4;
         let rgb_offset = i * 6;
@@ -340,39 +420,43 @@ pub fn yuyv_to_rgb(yuyv: &[u8], rgb: &mut [u8], width: usize, height: usize) {
             break;
         }
 
-        let y0 = yuyv[yuyv_offset] as f32;
-        let u = yuyv[yuyv_offset + 1] as f32 - 128.0;
-        let y1 = yuyv[yuyv_offset + 2] as f32;
-        let v = yuyv[yuyv_offset + 3] as f32 - 128.0;
+        // Read YUYV values
+        let y0 = yuyv[yuyv_offset] as i32;
+        let u = yuyv[yuyv_offset + 1] as i32 - 128;
+        let y1 = yuyv[yuyv_offset + 2] as i32;
+        let v = yuyv[yuyv_offset + 3] as i32 - 128;
+
+        // BT.601 conversion using fixed-point (scaled by 256)
+        // R = Y + 1.402 * V           → Y + (359 * V) >> 8
+        // G = Y - 0.344 * U - 0.714 * V → Y - (88 * U + 183 * V) >> 8
+        // B = Y + 1.772 * U           → Y + (454 * U) >> 8
+
+        // Pre-compute shared UV terms
+        let v_r = (359 * v) >> 8;
+        let uv_g = (88 * u + 183 * v) >> 8;
+        let u_b = (454 * u) >> 8;
 
         // First pixel
-        rgb[rgb_offset] = clamp_u8(y0 + 1.402 * v);
-        rgb[rgb_offset + 1] = clamp_u8(y0 - 0.344 * u - 0.714 * v);
-        rgb[rgb_offset + 2] = clamp_u8(y0 + 1.772 * u);
+        rgb[rgb_offset] = (y0 + v_r).clamp(0, 255) as u8;
+        rgb[rgb_offset + 1] = (y0 - uv_g).clamp(0, 255) as u8;
+        rgb[rgb_offset + 2] = (y0 + u_b).clamp(0, 255) as u8;
 
-        // Second pixel
-        rgb[rgb_offset + 3] = clamp_u8(y1 + 1.402 * v);
-        rgb[rgb_offset + 4] = clamp_u8(y1 - 0.344 * u - 0.714 * v);
-        rgb[rgb_offset + 5] = clamp_u8(y1 + 1.772 * u);
+        // Second pixel (shares U and V)
+        rgb[rgb_offset + 3] = (y1 + v_r).clamp(0, 255) as u8;
+        rgb[rgb_offset + 4] = (y1 - uv_g).clamp(0, 255) as u8;
+        rgb[rgb_offset + 5] = (y1 + u_b).clamp(0, 255) as u8;
     }
 }
 
-/// Convert BGR to RGB (swap R and B channels)
+/// Convert BGR to RGB (swap R and B channels) using chunks for better optimization
 #[inline]
 pub fn bgr_to_rgb(bgr: &[u8], rgb: &mut [u8]) {
-    for i in 0..(bgr.len() / 3) {
-        let offset = i * 3;
-        if offset + 2 < bgr.len() && offset + 2 < rgb.len() {
-            rgb[offset] = bgr[offset + 2];     // R <- B
-            rgb[offset + 1] = bgr[offset + 1]; // G <- G
-            rgb[offset + 2] = bgr[offset];     // B <- R
-        }
+    // Use chunks_exact for better auto-vectorization
+    for (bgr_chunk, rgb_chunk) in bgr.chunks_exact(3).zip(rgb.chunks_exact_mut(3)) {
+        rgb_chunk[0] = bgr_chunk[2]; // R <- B
+        rgb_chunk[1] = bgr_chunk[1]; // G <- G
+        rgb_chunk[2] = bgr_chunk[0]; // B <- R
     }
-}
-
-#[inline]
-fn clamp_u8(v: f32) -> u8 {
-    v.round().clamp(0.0, 255.0) as u8
 }
 
 #[cfg(test)]

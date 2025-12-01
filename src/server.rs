@@ -32,9 +32,11 @@ struct StaticAssets;
 pub struct PerformanceStats {
     /// Number of frames processed
     pub frames_processed: AtomicU64,
-    /// Total capture time in microseconds
-    pub total_capture_us: AtomicU64,
-    /// Total transform time in microseconds
+    /// Total time waiting for camera to deliver frames (microseconds)
+    pub total_frame_wait_us: AtomicU64,
+    /// Total decode/conversion time in microseconds (MJPEG decode or YUYV→RGB)
+    pub total_decode_us: AtomicU64,
+    /// Total transform time in microseconds (perspective warp)
     pub total_transform_us: AtomicU64,
     /// Total output write time in microseconds
     pub total_output_us: AtomicU64,
@@ -51,7 +53,8 @@ pub struct PerformanceStats {
 impl PerformanceStats {
     pub fn reset(&self) {
         self.frames_processed.store(0, Ordering::Relaxed);
-        self.total_capture_us.store(0, Ordering::Relaxed);
+        self.total_frame_wait_us.store(0, Ordering::Relaxed);
+        self.total_decode_us.store(0, Ordering::Relaxed);
         self.total_transform_us.store(0, Ordering::Relaxed);
         self.total_output_us.store(0, Ordering::Relaxed);
         self.total_preview_encode_us.store(0, Ordering::Relaxed);
@@ -249,15 +252,21 @@ impl AppState {
     }
 
     /// Record frame timing stats
+    /// - frame_wait_us: time waiting for camera to deliver frame
+    /// - decode_us: time to decode/convert pixel format
+    /// - transform_us: time for perspective warp
+    /// - output_us: time to write to virtual camera
     pub fn record_frame_stats(
         &self,
-        capture_us: u64,
+        frame_wait_us: u64,
+        decode_us: u64,
         transform_us: u64,
         output_us: u64,
         preview_encode_us: Option<u64>,
     ) {
         self.stats.frames_processed.fetch_add(1, Ordering::Relaxed);
-        self.stats.total_capture_us.fetch_add(capture_us, Ordering::Relaxed);
+        self.stats.total_frame_wait_us.fetch_add(frame_wait_us, Ordering::Relaxed);
+        self.stats.total_decode_us.fetch_add(decode_us, Ordering::Relaxed);
         self.stats.total_transform_us.fetch_add(transform_us, Ordering::Relaxed);
         self.stats.total_output_us.fetch_add(output_us, Ordering::Relaxed);
 
@@ -713,18 +722,20 @@ struct StatsResponse {
 
 #[derive(Serialize)]
 struct TimingStats {
-    /// Average capture time per frame (ms)
-    avg_capture_ms: f64,
-    /// Average transform time per frame (ms)
+    /// Average time waiting for camera (ms) - hardware limited, not improvable
+    avg_frame_wait_ms: f64,
+    /// Average decode/conversion time (ms) - MJPEG decode or YUYV→RGB
+    avg_decode_ms: f64,
+    /// Average transform time per frame (ms) - perspective warp
     avg_transform_ms: f64,
     /// Average output write time per frame (ms)
     avg_output_ms: f64,
     /// Average preview encode time per frame (ms) - only when encoding
     avg_preview_encode_ms: f64,
-    /// Total pipeline time per frame (ms) - excluding preview
+    /// Total processing time per frame (ms) - excludes frame wait
+    avg_processing_ms: f64,
+    /// Total pipeline time per frame (ms) - includes frame wait
     avg_pipeline_ms: f64,
-    /// Total pipeline time with preview (ms)
-    avg_pipeline_with_preview_ms: f64,
 }
 
 /// Get performance statistics
@@ -732,7 +743,8 @@ async fn get_stats(State(state): State<Arc<AppState>>) -> Json<StatsResponse> {
     let frames = state.stats.frames_processed.load(Ordering::Relaxed);
     let preview_frames = state.stats.preview_frames_encoded.load(Ordering::Relaxed);
 
-    let capture_us = state.stats.total_capture_us.load(Ordering::Relaxed);
+    let frame_wait_us = state.stats.total_frame_wait_us.load(Ordering::Relaxed);
+    let decode_us = state.stats.total_decode_us.load(Ordering::Relaxed);
     let transform_us = state.stats.total_transform_us.load(Ordering::Relaxed);
     let output_us = state.stats.total_output_us.load(Ordering::Relaxed);
     let preview_us = state.stats.total_preview_encode_us.load(Ordering::Relaxed);
@@ -752,13 +764,16 @@ async fn get_stats(State(state): State<Arc<AppState>>) -> Json<StatsResponse> {
     let frames_f = frames.max(1) as f64;
     let preview_frames_f = preview_frames.max(1) as f64;
 
-    let avg_capture_ms = (capture_us as f64 / frames_f) / 1000.0;
+    let avg_frame_wait_ms = (frame_wait_us as f64 / frames_f) / 1000.0;
+    let avg_decode_ms = (decode_us as f64 / frames_f) / 1000.0;
     let avg_transform_ms = (transform_us as f64 / frames_f) / 1000.0;
     let avg_output_ms = (output_us as f64 / frames_f) / 1000.0;
     let avg_preview_encode_ms = (preview_us as f64 / preview_frames_f) / 1000.0;
 
-    let avg_pipeline_ms = avg_capture_ms + avg_transform_ms + avg_output_ms;
-    let avg_pipeline_with_preview_ms = avg_pipeline_ms + avg_preview_encode_ms;
+    // Processing time = decode + transform + output (what we can optimize)
+    let avg_processing_ms = avg_decode_ms + avg_transform_ms + avg_output_ms;
+    // Pipeline time = frame wait + processing (total frame-to-frame time)
+    let avg_pipeline_ms = avg_frame_wait_ms + avg_processing_ms;
 
     Json(StatsResponse {
         fps,
@@ -766,12 +781,13 @@ async fn get_stats(State(state): State<Arc<AppState>>) -> Json<StatsResponse> {
         preview_active: state.preview_clients_active.load(Ordering::Relaxed),
         preview_frames_encoded: preview_frames,
         timing: TimingStats {
-            avg_capture_ms,
+            avg_frame_wait_ms,
+            avg_decode_ms,
             avg_transform_ms,
             avg_output_ms,
             avg_preview_encode_ms,
+            avg_processing_ms,
             avg_pipeline_ms,
-            avg_pipeline_with_preview_ms,
         },
         uptime_secs,
     })

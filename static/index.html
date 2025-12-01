@@ -110,30 +110,51 @@
                 <button id="toggle-stats" class="btn-link" title="Toggle detailed stats">📊</button>
             </div>
             <div id="stats-panel" class="stats-panel hidden">
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-label">Capture</span>
-                        <span class="stat-value" id="stat-capture">-- ms</span>
+                <div class="stats-section">
+                    <div class="stats-section-title">Hardware (camera limited)</div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Frame Wait</span>
+                            <span class="stat-value" id="stat-frame-wait">-- ms</span>
+                        </div>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Transform</span>
-                        <span class="stat-value" id="stat-transform">-- ms</span>
+                </div>
+                <div class="stats-section">
+                    <div class="stats-section-title">Processing (optimizable)</div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Decode</span>
+                            <span class="stat-value" id="stat-decode">-- ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Transform</span>
+                            <span class="stat-value" id="stat-transform">-- ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Output</span>
+                            <span class="stat-value" id="stat-output">-- ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Preview</span>
+                            <span class="stat-value" id="stat-preview">-- ms</span>
+                        </div>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Output</span>
-                        <span class="stat-value" id="stat-output">-- ms</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Preview</span>
-                        <span class="stat-value" id="stat-preview">-- ms</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Pipeline</span>
-                        <span class="stat-value" id="stat-pipeline">-- ms</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Frames</span>
-                        <span class="stat-value" id="stat-frames">--</span>
+                </div>
+                <div class="stats-section">
+                    <div class="stats-section-title">Totals</div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Processing</span>
+                            <span class="stat-value" id="stat-processing">-- ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Pipeline</span>
+                            <span class="stat-value" id="stat-pipeline">-- ms</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Frames</span>
+                            <span class="stat-value" id="stat-frames">--</span>
+                        </div>
                     </div>
                 </div>
                 <div class="stats-actions">
