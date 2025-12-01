@@ -2,10 +2,20 @@
 //!
 //! This module implements the perspective (homography) transformation
 //! that maps the distorted camera view of the TV screen to a rectangular output.
+//!
+//! Performance optimizations:
+//! - Pre-computed lookup table (LUT) for source coordinates
+//! - f32 instead of f64 for faster computation on ARM
+//! - Parallel processing using rayon
+//! - Optional nearest-neighbor sampling for maximum speed
 
 use crate::config::Calibration;
+use rayon::prelude::*;
 
 /// Perspective transformation matrix (3x3 homography)
+///
+/// Uses pre-computed lookup tables for fast warping and supports
+/// parallel processing via rayon.
 #[derive(Debug, Clone)]
 pub struct PerspectiveTransform {
     /// The 3x3 transformation matrix stored in row-major order
@@ -18,6 +28,9 @@ pub struct PerspectiveTransform {
     /// Destination image dimensions
     dst_width: u32,
     dst_height: u32,
+    /// Pre-computed source coordinates for each destination pixel (f32 for speed)
+    /// Layout: [dst_y * dst_width + dst_x] = (src_x, src_y)
+    lut: Vec<(f32, f32)>,
 }
 
 impl PerspectiveTransform {
@@ -31,6 +44,7 @@ impl PerspectiveTransform {
 
     /// Compute the perspective transform from 4 source points to 4 destination points
     /// Uses the Direct Linear Transform (DLT) algorithm
+    /// Pre-computes a lookup table for fast warping
     pub fn compute(
         src: [(f64, f64); 4],
         dst: [(f64, f64); 4],
@@ -42,6 +56,18 @@ impl PerspectiveTransform {
         let matrix = compute_homography(src, dst);
         let inverse = compute_homography(dst, src);
 
+        // Pre-compute lookup table for all destination pixels
+        let dst_w = dst_width as usize;
+        let dst_h = dst_height as usize;
+        let mut lut = Vec::with_capacity(dst_w * dst_h);
+
+        for dst_y in 0..dst_h {
+            for dst_x in 0..dst_w {
+                let (src_x, src_y) = apply_homography(&inverse, dst_x as f64, dst_y as f64);
+                lut.push((src_x as f32, src_y as f32));
+            }
+        }
+
         Self {
             matrix,
             inverse,
@@ -49,6 +75,7 @@ impl PerspectiveTransform {
             src_height,
             dst_width,
             dst_height,
+            lut,
         }
     }
 
@@ -65,7 +92,8 @@ impl PerspectiveTransform {
     }
 
     /// Apply the perspective transform to an image buffer
-    /// Uses bilinear interpolation for smooth output
+    /// Uses pre-computed LUT and bilinear interpolation
+    /// Parallelized across rows using rayon for multi-core performance
     pub fn warp_image(
         &self,
         src: &[u8],
@@ -79,27 +107,94 @@ impl PerspectiveTransform {
         let src_w = self.src_width as usize;
         let src_h = self.src_height as usize;
 
-        for dst_y in 0..dst_h {
-            for dst_x in 0..dst_w {
-                // Map destination pixel to source coordinates
-                let (src_x, src_y) = self.inverse_transform_point(dst_x as f64, dst_y as f64);
+        // Process rows in parallel using rayon
+        dst.par_chunks_mut(dst_stride)
+            .enumerate()
+            .take(dst_h)
+            .for_each(|(dst_y, row)| {
+                self.warp_row(src, src_stride, src_w, src_h, channels, dst_w, dst_y, row);
+            });
+    }
 
-                // Bilinear interpolation
-                let pixel = bilinear_sample(src, src_stride, src_w, src_h, channels, src_x, src_y);
+    /// Warp a single row (used by both parallel and sequential paths)
+    #[inline]
+    fn warp_row(
+        &self,
+        src: &[u8],
+        src_stride: usize,
+        src_w: usize,
+        src_h: usize,
+        channels: usize,
+        dst_w: usize,
+        dst_y: usize,
+        row: &mut [u8],
+    ) {
+        let lut_row_offset = dst_y * dst_w;
 
-                // Write to destination
-                let dst_offset = dst_y * dst_stride + dst_x * channels;
-                for c in 0..channels {
-                    if dst_offset + c < dst.len() {
-                        dst[dst_offset + c] = pixel[c];
-                    }
+        for dst_x in 0..dst_w {
+            let (src_x, src_y) = self.lut[lut_row_offset + dst_x];
+
+            // Bilinear interpolation with f32 for speed
+            let pixel = bilinear_sample_f32(
+                src, src_stride, src_w, src_h, channels,
+                src_x, src_y
+            );
+
+            // Write to destination
+            let dst_offset = dst_x * channels;
+            for c in 0..channels {
+                if dst_offset + c < row.len() {
+                    row[dst_offset + c] = pixel[c];
                 }
             }
         }
     }
 
+    /// Fast warp using nearest-neighbor sampling (no interpolation)
+    /// Use this for maximum speed when quality can be sacrificed
+    #[allow(dead_code)]
+    pub fn warp_image_fast(
+        &self,
+        src: &[u8],
+        src_stride: usize,
+        dst: &mut [u8],
+        dst_stride: usize,
+        channels: usize,
+    ) {
+        let dst_w = self.dst_width as usize;
+        let dst_h = self.dst_height as usize;
+        let src_w = self.src_width as usize;
+        let src_h = self.src_height as usize;
+
+        // Parallel processing with nearest neighbor
+        dst.par_chunks_mut(dst_stride)
+            .enumerate()
+            .take(dst_h)
+            .for_each(|(dst_y, row)| {
+                let lut_row_offset = dst_y * dst_w;
+
+                for dst_x in 0..dst_w {
+                    let (src_x, src_y) = self.lut[lut_row_offset + dst_x];
+
+                    // Nearest neighbor - just round to nearest pixel
+                    let sx = (src_x.round() as usize).min(src_w - 1);
+                    let sy = (src_y.round() as usize).min(src_h - 1);
+                    let src_offset = sy * src_stride + sx * channels;
+
+                    // Write to destination
+                    let dst_offset = dst_x * channels;
+                    for c in 0..channels {
+                        if dst_offset + c < row.len() && src_offset + c < src.len() {
+                            row[dst_offset + c] = src[src_offset + c];
+                        }
+                    }
+                }
+            });
+    }
+
     /// Apply the perspective transform to a YUYV image buffer
     /// YUYV is a common format for USB cameras (4 bytes = 2 pixels)
+    #[allow(dead_code)]
     pub fn warp_yuyv(
         &self,
         src: &[u8],
@@ -289,7 +384,59 @@ fn apply_homography(h: &[f64; 9], x: f64, y: f64) -> (f64, f64) {
     (xp, yp)
 }
 
-/// Bilinear interpolation sampling
+/// Bilinear interpolation sampling using f32 for speed on ARM
+/// This is the hot path - optimized for performance
+#[inline]
+fn bilinear_sample_f32(
+    src: &[u8],
+    stride: usize,
+    width: usize,
+    height: usize,
+    channels: usize,
+    x: f32,
+    y: f32,
+) -> [u8; 4] {
+    // Clamp coordinates
+    let x = x.max(0.0).min((width - 1) as f32);
+    let y = y.max(0.0).min((height - 1) as f32);
+
+    let x0 = x.floor() as usize;
+    let y0 = y.floor() as usize;
+    let x1 = (x0 + 1).min(width - 1);
+    let y1 = (y0 + 1).min(height - 1);
+
+    let fx = x - x0 as f32;
+    let fy = y - y0 as f32;
+
+    // Pre-compute weights
+    let w00 = (1.0 - fx) * (1.0 - fy);
+    let w10 = fx * (1.0 - fy);
+    let w01 = (1.0 - fx) * fy;
+    let w11 = fx * fy;
+
+    // Pre-compute offsets
+    let off00 = y0 * stride + x0 * channels;
+    let off10 = y0 * stride + x1 * channels;
+    let off01 = y1 * stride + x0 * channels;
+    let off11 = y1 * stride + x1 * channels;
+
+    let mut result = [0u8; 4];
+
+    for c in 0..channels.min(4) {
+        // Use get() to avoid bounds checks in the inner loop
+        let p00 = src.get(off00 + c).copied().unwrap_or(0) as f32;
+        let p10 = src.get(off10 + c).copied().unwrap_or(0) as f32;
+        let p01 = src.get(off01 + c).copied().unwrap_or(0) as f32;
+        let p11 = src.get(off11 + c).copied().unwrap_or(0) as f32;
+
+        let value = p00 * w00 + p10 * w10 + p01 * w01 + p11 * w11;
+        result[c] = value.round().clamp(0.0, 255.0) as u8;
+    }
+
+    result
+}
+
+/// Bilinear interpolation sampling (f64 version for precision when needed)
 #[inline]
 fn bilinear_sample(
     src: &[u8],

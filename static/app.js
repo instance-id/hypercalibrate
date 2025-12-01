@@ -904,22 +904,25 @@ class HyperCalibrate {
         const latencyEl = document.getElementById('latency-display');
 
         fpsEl.textContent = stats.fps.toFixed(1) + ' fps';
-        latencyEl.textContent = stats.timing.avg_pipeline_ms.toFixed(2) + ' ms';
+        // Show processing time (what we can optimize) in footer
+        latencyEl.textContent = stats.timing.avg_processing_ms.toFixed(2) + ' ms';
 
-        // Update detailed stats panel
-        document.getElementById('stat-capture').textContent = stats.timing.avg_capture_ms.toFixed(2) + ' ms';
+        // Update detailed stats panel - separate hardware wait from processing
+        document.getElementById('stat-frame-wait').textContent = stats.timing.avg_frame_wait_ms.toFixed(2) + ' ms';
+        document.getElementById('stat-decode').textContent = stats.timing.avg_decode_ms.toFixed(2) + ' ms';
         document.getElementById('stat-transform').textContent = stats.timing.avg_transform_ms.toFixed(2) + ' ms';
         document.getElementById('stat-output').textContent = stats.timing.avg_output_ms.toFixed(2) + ' ms';
 
         // Show preview stats only when preview is active, otherwise show N/A
         if (stats.preview_active && stats.preview_frames_encoded > 0) {
             document.getElementById('stat-preview').textContent = stats.timing.avg_preview_encode_ms.toFixed(2) + ' ms';
-            document.getElementById('stat-pipeline').textContent = stats.timing.avg_pipeline_with_preview_ms.toFixed(2) + ' ms';
         } else {
             document.getElementById('stat-preview').textContent = 'N/A';
-            // Show pipeline without preview when preview is off
-            document.getElementById('stat-pipeline').textContent = stats.timing.avg_pipeline_ms.toFixed(2) + ' ms';
         }
+
+        // Processing time (what we control) and total pipeline time
+        document.getElementById('stat-processing').textContent = stats.timing.avg_processing_ms.toFixed(2) + ' ms';
+        document.getElementById('stat-pipeline').textContent = stats.timing.avg_pipeline_ms.toFixed(2) + ' ms';
 
         document.getElementById('stat-frames').textContent = this.formatNumber(stats.frames_processed);
 

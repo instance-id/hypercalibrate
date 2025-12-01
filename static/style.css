@@ -419,6 +419,24 @@ footer {
     display: none;
 }
 
+.stats-section {
+    margin-bottom: 0.75rem;
+}
+
+.stats-section:last-of-type {
+    margin-bottom: 0;
+}
+
+.stats-section-title {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--bg-primary);
+}
+
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
