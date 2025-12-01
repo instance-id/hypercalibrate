@@ -23,6 +23,8 @@ HyperCalibrate is a high-performance application designed to run on Raspberry Pi
 
 <img src="./media/hypercalibrate.png" alt="hypercalibrate" height="650">
 
+https://github.com/user-attachments/assets/63b4e111-1e47-4460-b328-d0b791985e12
+
 ## Quick Start (Recommended)
 
 The easiest way to get started is to deploy directly to your HyperBian installation:
