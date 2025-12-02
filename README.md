@@ -91,7 +91,7 @@ nano deploy.conf  # Edit with your settings
 
 # Binary will be at: dist/hypercalibrate
 # Copy it and the install script to your Pi
-scp dist/hypercalibrate install-rpi.sh pi@192.168.1.100:~/
+scp dist/hypercalibrate scripts/install-rpi.sh pi@192.168.1.100:~/
 
 # Then on the Pi, run the install script
 ssh pi@192.168.1.100
@@ -111,8 +111,8 @@ cd hypercalibrate
 cargo build --release
 
 # Install (optionally customize settings via environment variables)
-# INPUT_DEVICE=/dev/video0 OUTPUT_DEVICE=/dev/video10 sudo -E ./install-rpi.sh
-sudo ./install-rpi.sh
+# INPUT_DEVICE=/dev/video0 OUTPUT_DEVICE=/dev/video10 sudo -E ./scripts/install-rpi.sh
+sudo ./scripts/install-rpi.sh
 ```
 
 ## Configuration
@@ -341,12 +341,12 @@ Use this when:
 - You want a reproducible build environment
 - You're on macOS or Windows (WSL)
 
-### local-build.sh
+### scripts/local-build.sh
 
 Builds natively or cross-compiles using locally installed toolchains.
 
 ```bash
-./local-build.sh [target] [profile]
+./scripts/local-build.sh [target] [profile]
 
 Targets:
   native   Build for current machine (default)
@@ -372,12 +372,12 @@ sudo apt install gcc-aarch64-linux-gnu
 sudo apt install gcc-arm-linux-gnueabihf
 ```
 
-### install-rpi.sh
+### scripts/install-rpi.sh
 
 Manual installation script to run directly on the Raspberry Pi.
 
 ```bash
-sudo ./install-rpi.sh
+sudo ./scripts/install-rpi.sh
 
 # Or with custom configuration via environment variables:
 INPUT_DEVICE=/dev/video0 \
@@ -386,7 +386,7 @@ CAPTURE_WIDTH=640 \
 CAPTURE_HEIGHT=480 \
 CAPTURE_FPS=30 \
 WEB_PORT=8091 \
-sudo -E ./install-rpi.sh
+sudo -E ./scripts/install-rpi.sh
 ```
 
 Environment Variables:

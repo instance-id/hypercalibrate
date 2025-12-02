@@ -14,13 +14,14 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
 
 #-------------------------------------------------------------------------------
 # Load configuration
 #-------------------------------------------------------------------------------
-if [ -f "$SCRIPT_DIR/deploy.conf" ]; then
-    source "$SCRIPT_DIR/deploy.conf"
+if [ -f "$PROJECT_ROOT/deploy.conf" ]; then
+    source "$PROJECT_ROOT/deploy.conf"
 fi
 
 PI_USER="${PI_USER:-hyperion}"
@@ -42,7 +43,7 @@ if [ -z "$PI_IP" ]; then
     exit 1
 fi
 
-BINARY="$SCRIPT_DIR/dist/hypercalibrate"
+BINARY="$PROJECT_ROOT/dist/hypercalibrate"
 if [ ! -f "$BINARY" ]; then
     echo "❌ Binary not found at $BINARY"
     echo "   Run ./docker-build.sh first"

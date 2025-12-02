@@ -7,7 +7,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
 
 echo "🧪 HyperCalibrate Environment Check"
 echo "═══════════════════════════════════════════════════════════════"
@@ -46,8 +47,8 @@ if [ -z "$BINARY" ]; then
     echo "   ❌ No binary found"
     echo ""
     echo "   Build with one of:"
-    echo "      ./docker-build.sh        # Cross-compile for Raspberry Pi (recommended)"
-    echo "      ./local-build.sh         # Build natively"
+    echo "      ./docker-build.sh            # Cross-compile for Raspberry Pi (recommended)"
+    echo "      ./scripts/local-build.sh     # Build natively"
     echo "      cargo build --release    # Build for current platform"
     echo ""
 fi

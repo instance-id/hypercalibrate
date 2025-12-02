@@ -76,7 +76,7 @@ fi
 if [ -f "$BINARY_PATH" ]; then
     sudo install -m 755 "$BINARY_PATH" /usr/local/bin/hypercalibrate
 else
-    echo "⚠️  Binary not found. Build first with: ./docker-build.sh (or ./local-build.sh rpi)"
+    echo "⚠️  Binary not found. Build first with: ./docker-build.sh (or ./scripts/local-build.sh rpi)"
     exit 1
 fi
 
