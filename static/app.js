@@ -18,6 +18,7 @@ class HyperCalibrate {
         this.edgePoints = [];
         this.width = 640;
         this.height = 480;
+        this.fps = 30;
         this.calibrationEnabled = true;
         this.showCorrected = false;
         this.draggingPoint = null;
@@ -29,6 +30,12 @@ class HyperCalibrate {
         this.cameraPanelVisible = false;
         this.statsPanelVisible = false;
         this.livePreviewEnabled = false;  // Start with snapshot mode
+
+        // Video settings
+        this.videoCapabilities = null;
+        this.pendingVideoSettings = null;
+        this.selectedResolution = null;
+        this.selectedFps = null;
 
         this.edgeCorners = [
             [0, 1],
@@ -52,6 +59,7 @@ class HyperCalibrate {
 
         await this.loadInfo();
         await this.loadCalibration();
+        await this.loadVideoSettings();
         await this.loadCameraControls();
 
         // Capture initial snapshot (don't start live preview by default)
@@ -122,6 +130,19 @@ class HyperCalibrate {
             this.refreshCameraControls();
         });
 
+        // Video settings controls
+        document.getElementById('resolution-select').addEventListener('change', (e) => {
+            this.onResolutionChange(e.target.value);
+        });
+
+        document.getElementById('fps-select').addEventListener('change', (e) => {
+            this.onFpsChange(parseInt(e.target.value));
+        });
+
+        document.getElementById('apply-video-settings-btn').addEventListener('click', () => {
+            this.applyVideoSettings();
+        });
+
         // Stats panel controls
         document.getElementById('toggle-stats').addEventListener('click', () => {
             this.toggleStatsPanel();
@@ -129,6 +150,10 @@ class HyperCalibrate {
 
         document.getElementById('reset-stats-btn').addEventListener('click', () => {
             this.resetStats();
+        });
+
+        document.getElementById('restart-service-btn').addEventListener('click', () => {
+            this.restartService();
         });
 
         this.previewElement.addEventListener('load', () => {
@@ -170,10 +195,11 @@ class HyperCalibrate {
 
             this.width = info.width;
             this.height = info.height;
+            this.fps = info.fps || 30;
             this.calibrationEnabled = info.calibration_enabled;
 
             document.getElementById('version').textContent = 'v' + info.version;
-            document.getElementById('resolution').textContent = info.width + '×' + info.height;
+            document.getElementById('resolution').textContent = `${info.width}×${info.height} @ ${this.fps}fps`;
             document.getElementById('calibration-enabled').checked = info.calibration_enabled;
         } catch (error) {
             console.error('Failed to load info:', error);
@@ -879,12 +905,283 @@ class HyperCalibrate {
     }
 
     // ========================================================================
+    // Video Settings (Resolution/Framerate)
+    // ========================================================================
+
+    async loadVideoSettings() {
+        const loadingEl = document.getElementById('video-settings-loading');
+        const contentEl = document.getElementById('video-settings-content');
+        const unavailableEl = document.getElementById('video-settings-unavailable');
+
+        loadingEl.classList.remove('hidden');
+        contentEl.classList.add('hidden');
+        unavailableEl.classList.add('hidden');
+
+        try {
+            const response = await fetch('/api/video/capabilities');
+            if (!response.ok) {
+                throw new Error('Failed to fetch video capabilities');
+            }
+
+            const data = await response.json();
+            this.videoCapabilities = data.capabilities;
+
+            // Store current settings
+            this.width = data.current.width;
+            this.height = data.current.height;
+            this.fps = data.current.fps;
+            this.selectedResolution = `${data.current.width}x${data.current.height}`;
+            this.selectedFps = data.current.fps;
+
+            loadingEl.classList.add('hidden');
+
+            if (!this.videoCapabilities || this.videoCapabilities.resolutions.length === 0) {
+                unavailableEl.classList.remove('hidden');
+                return;
+            }
+
+            this.renderVideoSettings();
+            contentEl.classList.remove('hidden');
+
+            // Check for pending settings
+            await this.checkPendingSettings();
+        } catch (error) {
+            console.error('Failed to load video settings:', error);
+            loadingEl.classList.add('hidden');
+            unavailableEl.classList.remove('hidden');
+        }
+    }
+
+    renderVideoSettings() {
+        const resolutionSelect = document.getElementById('resolution-select');
+        const fpsSelect = document.getElementById('fps-select');
+        const currentResEl = document.getElementById('current-resolution');
+        const currentFpsEl = document.getElementById('current-fps');
+
+        // Update current values display
+        currentResEl.textContent = `${this.width}×${this.height}`;
+        currentFpsEl.textContent = `${this.fps} fps`;
+
+        // Populate resolution dropdown
+        resolutionSelect.innerHTML = '';
+        const resolutions = this.videoCapabilities.resolutions;
+
+        // Sort resolutions by total pixels (descending)
+        resolutions.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+
+        for (const res of resolutions) {
+            const option = document.createElement('option');
+            option.value = `${res.width}x${res.height}`;
+            option.textContent = `${res.width} × ${res.height}`;
+            if (res.width === this.width && res.height === this.height) {
+                option.selected = true;
+            }
+            resolutionSelect.appendChild(option);
+        }
+
+        // Populate FPS dropdown for current resolution
+        this.updateFpsOptions();
+    }
+
+    updateFpsOptions() {
+        const fpsSelect = document.getElementById('fps-select');
+        fpsSelect.innerHTML = '';
+
+        // Find framerates for selected resolution
+        const [width, height] = this.selectedResolution.split('x').map(Number);
+        const resInfo = this.videoCapabilities.resolutions.find(
+            r => r.width === width && r.height === height
+        );
+
+        if (!resInfo || !resInfo.framerates || resInfo.framerates.length === 0) {
+            // No specific framerates, add common defaults
+            const defaultFps = [30, 25, 20, 15, 10];
+            for (const fps of defaultFps) {
+                const option = document.createElement('option');
+                option.value = fps;
+                option.textContent = `${fps} fps`;
+                if (fps === this.selectedFps || fps === this.fps) {
+                    option.selected = true;
+                }
+                fpsSelect.appendChild(option);
+            }
+            return;
+        }
+
+        // Sort framerates descending
+        const framerates = [...resInfo.framerates].sort((a, b) => b.fps - a.fps);
+
+        for (const fr of framerates) {
+            const option = document.createElement('option');
+            option.value = Math.round(fr.fps);
+            option.textContent = `${fr.fps.toFixed(fr.fps % 1 === 0 ? 0 : 2)} fps`;
+            if (Math.round(fr.fps) === this.selectedFps || Math.round(fr.fps) === this.fps) {
+                option.selected = true;
+            }
+            fpsSelect.appendChild(option);
+        }
+
+        // If current FPS not found, select first option
+        if (!fpsSelect.value) {
+            fpsSelect.selectedIndex = 0;
+            this.selectedFps = parseInt(fpsSelect.value);
+        }
+    }
+
+    onResolutionChange(value) {
+        this.selectedResolution = value;
+        this.updateFpsOptions();
+        this.updatePendingState();
+    }
+
+    onFpsChange(value) {
+        this.selectedFps = value;
+        this.updatePendingState();
+    }
+
+    updatePendingState() {
+        const [selectedWidth, selectedHeight] = this.selectedResolution.split('x').map(Number);
+        const hasChanges =
+            selectedWidth !== this.width ||
+            selectedHeight !== this.height ||
+            this.selectedFps !== this.fps;
+
+        const noticeEl = document.getElementById('pending-settings-notice');
+        const applyBtn = document.getElementById('apply-video-settings-btn');
+
+        if (hasChanges) {
+            noticeEl.classList.remove('hidden');
+            applyBtn.classList.remove('hidden');
+        } else {
+            noticeEl.classList.add('hidden');
+            applyBtn.classList.add('hidden');
+        }
+    }
+
+    async checkPendingSettings() {
+        try {
+            const response = await fetch('/api/video/settings');
+            const data = await response.json();
+
+            if (data.pending) {
+                this.pendingVideoSettings = data.pending;
+
+                // Update selection to show pending values
+                if (data.pending.width && data.pending.height) {
+                    this.selectedResolution = `${data.pending.width}x${data.pending.height}`;
+                    document.getElementById('resolution-select').value = this.selectedResolution;
+                }
+                if (data.pending.fps) {
+                    this.selectedFps = data.pending.fps;
+                    this.updateFpsOptions();
+                }
+
+                this.updatePendingState();
+            }
+        } catch (error) {
+            console.error('Failed to check pending settings:', error);
+        }
+    }
+
+    async applyVideoSettings() {
+        const [width, height] = this.selectedResolution.split('x').map(Number);
+        const fps = this.selectedFps;
+
+        const applyBtn = document.getElementById('apply-video-settings-btn');
+        applyBtn.disabled = true;
+        applyBtn.textContent = 'Applying...';
+
+        try {
+            // Save the settings
+            const saveResponse = await fetch('/api/video/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ width, height, fps })
+            });
+
+            const saveResult = await saveResponse.json();
+
+            if (!saveResponse.ok) {
+                throw new Error(saveResult.message || 'Failed to save settings');
+            }
+
+            if (saveResult.restart_required) {
+                this.showToast('Settings saved. Restarting service...', 'success');
+
+                // Request restart
+                const restartResponse = await fetch('/api/system/restart', { method: 'POST' });
+                const restartResult = await restartResponse.json();
+
+                if (restartResult.success) {
+                    // Show a message that we're restarting
+                    this.setStatus('Restarting...', 'warning');
+                    applyBtn.textContent = 'Restarting...';
+
+                    // Wait for reconnection
+                    this.waitForReconnect();
+                } else {
+                    throw new Error(restartResult.message || 'Failed to restart');
+                }
+            } else {
+                this.showToast(saveResult.message, 'success');
+                applyBtn.disabled = false;
+                applyBtn.textContent = 'Apply & Restart';
+                this.updatePendingState();
+            }
+        } catch (error) {
+            console.error('Failed to apply video settings:', error);
+            this.showToast('Failed to apply settings: ' + error.message, 'error');
+            applyBtn.disabled = false;
+            applyBtn.textContent = 'Apply & Restart';
+        }
+    }
+
+    async waitForReconnect() {
+        const maxAttempts = 30;
+        const delayMs = 1000;
+        let attempts = 0;
+
+        this.setStatus('Reconnecting...', 'warning');
+
+        const checkConnection = async () => {
+            attempts++;
+            try {
+                const response = await fetch('/api/info', {
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(2000)
+                });
+                if (response.ok) {
+                    // Reconnected! Reload the page to get fresh state
+                    this.showToast('Service restarted successfully!', 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                    return;
+                }
+            } catch (error) {
+                // Still down, keep trying
+            }
+
+            if (attempts < maxAttempts) {
+                setTimeout(checkConnection, delayMs);
+            } else {
+                this.setStatus('Connection lost', 'error');
+                this.showToast('Service may still be restarting. Try refreshing the page.', 'warning');
+            }
+        };
+
+        // Start checking after a short delay
+        setTimeout(checkConnection, 2000);
+    }
+
+    // ========================================================================
     // Preview & Performance Stats
     // ========================================================================
 
     startStatsRefresh() {
         this.statsInterval = setInterval(() => {
             this.loadStats();
+            this.loadSystemStats();
         }, 1000);
     }
 
@@ -896,6 +1193,131 @@ class HyperCalibrate {
         } catch (error) {
             // Silently fail for stats - non-critical
         }
+    }
+
+    async loadSystemStats() {
+        try {
+            const response = await fetch('/api/system/stats');
+            const stats = await response.json();
+            this.updateSystemStatsDisplay(stats);
+        } catch (error) {
+            // Silently fail for stats - non-critical
+        }
+    }
+
+    updateSystemStatsDisplay(stats) {
+        // CPU Temperature
+        const cpuTempEl = document.getElementById('stat-cpu-temp');
+        const cpuTempMini = document.getElementById('cpu-temp-mini');
+        if (stats.cpu_temp_c !== null) {
+            const temp = stats.cpu_temp_c;
+            cpuTempEl.textContent = temp.toFixed(1) + ' °C';
+            cpuTempMini.textContent = '🌡️ ' + temp.toFixed(0) + '°C';
+            // Color code temperature
+            if (temp >= 80) {
+                cpuTempEl.className = 'stat-value temp-critical';
+                cpuTempMini.className = 'mini-stat temp-critical';
+            } else if (temp >= 70) {
+                cpuTempEl.className = 'stat-value temp-warning';
+                cpuTempMini.className = 'mini-stat temp-warning';
+            } else {
+                cpuTempEl.className = 'stat-value temp-ok';
+                cpuTempMini.className = 'mini-stat temp-ok';
+            }
+        } else {
+            cpuTempEl.textContent = 'N/A';
+            cpuTempEl.className = 'stat-value';
+            cpuTempMini.textContent = '🌡️ --°C';
+            cpuTempMini.className = 'mini-stat';
+        }
+
+        // Memory usage
+        const memEl = document.getElementById('stat-memory');
+        const memMini = document.getElementById('memory-mini');
+        memEl.textContent = stats.mem_used_percent.toFixed(0) + '%';
+        memMini.textContent = '💾 ' + stats.mem_used_percent.toFixed(0) + '%';
+        if (stats.mem_used_percent >= 90) {
+            memEl.className = 'stat-value temp-critical';
+            memMini.className = 'mini-stat temp-critical';
+        } else if (stats.mem_used_percent >= 75) {
+            memEl.className = 'stat-value temp-warning';
+            memMini.className = 'mini-stat temp-warning';
+        } else {
+            memEl.className = 'stat-value';
+            memMini.className = 'mini-stat';
+        }
+
+        // Load average
+        const loadEl = document.getElementById('stat-load');
+        const loadMini = document.getElementById('load-mini');
+        if (stats.load_avg_1m !== null) {
+            loadEl.textContent = stats.load_avg_1m.toFixed(2);
+            loadMini.textContent = '📈 ' + stats.load_avg_1m.toFixed(1);
+            // Color based on load (assuming 4 cores on Pi)
+            if (stats.load_avg_1m >= 4) {
+                loadEl.className = 'stat-value temp-critical';
+                loadMini.className = 'mini-stat temp-critical';
+            } else if (stats.load_avg_1m >= 2) {
+                loadEl.className = 'stat-value temp-warning';
+                loadMini.className = 'mini-stat temp-warning';
+            } else {
+                loadEl.className = 'stat-value';
+                loadMini.className = 'mini-stat';
+            }
+        } else {
+            loadEl.textContent = 'N/A';
+            loadMini.textContent = '📈 --';
+        }
+
+        // Throttle status
+        const throttleEl = document.getElementById('stat-throttle');
+        if (stats.throttled) {
+            const t = stats.throttled;
+            let status = [];
+            let isCritical = false;
+            let isWarning = false;
+
+            // Current issues (critical)
+            if (t.under_voltage) { status.push('UV!'); isCritical = true; }
+            if (t.throttled) { status.push('THR!'); isCritical = true; }
+            if (t.freq_capped) { status.push('CAP'); isWarning = true; }
+            if (t.soft_temp_limit) { status.push('HOT'); isWarning = true; }
+
+            // Past issues (warning indicator)
+            if (status.length === 0) {
+                if (t.under_voltage_occurred || t.throttled_occurred) {
+                    status.push('PREV');
+                    isWarning = true;
+                }
+            }
+
+            if (status.length > 0) {
+                throttleEl.textContent = status.join(' ');
+                throttleEl.className = 'stat-value ' + (isCritical ? 'temp-critical' : 'temp-warning');
+                throttleEl.title = this.formatThrottleTooltip(t);
+            } else {
+                throttleEl.textContent = 'OK';
+                throttleEl.className = 'stat-value temp-ok';
+                throttleEl.title = 'No throttling detected';
+            }
+        } else {
+            throttleEl.textContent = '--';
+            throttleEl.className = 'stat-value';
+            throttleEl.title = 'Throttle status not available';
+        }
+    }
+
+    formatThrottleTooltip(t) {
+        let lines = [];
+        if (t.under_voltage) lines.push('⚠️ Under-voltage NOW');
+        if (t.throttled) lines.push('⚠️ Throttled NOW');
+        if (t.freq_capped) lines.push('⚠️ Frequency capped');
+        if (t.soft_temp_limit) lines.push('⚠️ Soft temp limit');
+        if (t.under_voltage_occurred) lines.push('📋 Under-voltage occurred');
+        if (t.throttled_occurred) lines.push('📋 Throttling occurred');
+        if (t.freq_capped_occurred) lines.push('📋 Freq capping occurred');
+        if (t.soft_temp_limit_occurred) lines.push('📋 Temp limit occurred');
+        return lines.length > 0 ? lines.join('\n') : 'System healthy';
     }
 
     updateStatsDisplay(stats) {
@@ -966,6 +1388,58 @@ class HyperCalibrate {
             console.error('Failed to reset stats:', error);
             this.showToast('Failed to reset stats', 'error');
         }
+    }
+
+    async restartService() {
+        if (!confirm('Restart HyperCalibrate service?\n\nThe page will reload automatically when the service is back up.')) {
+            return;
+        }
+
+        try {
+            this.showToast('Restarting service...', 'info');
+            this.setStatus('Restarting...', 'warning');
+
+            await fetch('/api/system/restart', { method: 'POST' });
+
+            // Wait a moment then start polling for service to come back
+            setTimeout(() => this.waitForRestart(), 2000);
+        } catch (error) {
+            console.error('Failed to restart service:', error);
+            this.showToast('Failed to send restart request', 'error');
+        }
+    }
+
+    async waitForRestart() {
+        const maxAttempts = 30;  // 30 seconds max wait
+        let attempts = 0;
+
+        const checkService = async () => {
+            attempts++;
+            try {
+                const response = await fetch('/api/info', {
+                    method: 'GET',
+                    cache: 'no-store'
+                });
+                if (response.ok) {
+                    // Service is back!
+                    this.showToast('Service restarted successfully', 'success');
+                    window.location.reload();
+                    return;
+                }
+            } catch (e) {
+                // Still down, keep trying
+            }
+
+            if (attempts < maxAttempts) {
+                this.setStatus(`Waiting for restart... (${attempts}s)`, 'warning');
+                setTimeout(checkService, 1000);
+            } else {
+                this.setStatus('Restart timeout', 'error');
+                this.showToast('Service did not come back up. Check the Pi.', 'error');
+            }
+        };
+
+        checkService();
     }
 
     // ========================================================================

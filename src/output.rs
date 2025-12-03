@@ -10,9 +10,11 @@
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
 /// Supported pixel formats for output
@@ -65,7 +67,10 @@ pub struct VirtualCamera {
     format: PixelFormat,
     frame_size: usize,
     frame_count: AtomicU64,
+    dropped_count: AtomicU64,
     initialized: bool,
+    /// Track when we last logged a warning about dropped frames
+    last_drop_warn: Option<Instant>,
 }
 
 // V4L2 ioctl definitions
@@ -118,7 +123,9 @@ impl VirtualCamera {
             format,
             frame_size,
             frame_count: AtomicU64::new(0),
+            dropped_count: AtomicU64::new(0),
             initialized: false,
+            last_drop_warn: None,
         })
     }
 
@@ -186,10 +193,12 @@ impl VirtualCamera {
 
     /// Try to initialize with a specific format
     fn try_initialize_with_format(&mut self, format: PixelFormat) -> io::Result<()> {
-        // Open the device
+        // Open the device with O_NONBLOCK to prevent blocking writes
+        // This is critical to avoid deadlock when downstream consumer stops reading
         let file = OpenOptions::new()
             .read(true)
             .write(true)
+            .custom_flags(libc::O_NONBLOCK)
             .open(&self.device_path)?;
 
         let fd = file.as_raw_fd();
@@ -240,9 +249,11 @@ impl VirtualCamera {
 
     /// Try opening without setting format (for pre-configured v4l2loopback)
     fn try_raw_open(&mut self) -> io::Result<()> {
+        // Open with O_NONBLOCK to prevent blocking writes
         let file = OpenOptions::new()
             .read(true)
             .write(true)
+            .custom_flags(libc::O_NONBLOCK)
             .open(&self.device_path)?;
 
         self.file = Some(file);
@@ -290,10 +301,18 @@ impl VirtualCamera {
     }
 
     /// Write raw frame data directly to device
+    /// Uses O_NONBLOCK to prevent deadlock if downstream consumer stops reading.
+    /// If the buffer is full, the frame is dropped rather than blocking.
     fn write_raw(&mut self, data: &[u8]) -> io::Result<()> {
         if let Some(ref mut file) = self.file {
             match file.write_all(data) {
                 Ok(()) => Ok(()),
+                Err(e) if e.raw_os_error() == Some(libc::EAGAIN) ||
+                          e.raw_os_error() == Some(libc::EWOULDBLOCK) => {
+                    // Buffer full - drop the frame to avoid blocking
+                    self.record_dropped_frame();
+                    Ok(())
+                }
                 Err(e) if e.raw_os_error() == Some(libc::EINVAL) => {
                     // EINVAL often means format mismatch or device not ready
                     warn!("Write returned EINVAL - device may not be properly configured");
@@ -309,20 +328,46 @@ impl VirtualCamera {
         }
     }
 
+    /// Record a dropped frame and log periodically
+    fn record_dropped_frame(&mut self) {
+        let dropped = self.dropped_count.fetch_add(1, Ordering::Relaxed) + 1;
+
+        // Log at most every 5 seconds to avoid spamming
+        let should_warn = match self.last_drop_warn {
+            None => true,
+            Some(last) => last.elapsed() >= Duration::from_secs(5),
+        };
+
+        if should_warn {
+            let written = self.frame_count.load(Ordering::Relaxed);
+            warn!(
+                "Dropped frame (total dropped: {}, written: {}) - downstream consumer may be slow",
+                dropped, written
+            );
+            self.last_drop_warn = Some(Instant::now());
+        }
+    }
+
     /// Get the current frame count
     pub fn frame_count(&self) -> u64 {
         self.frame_count.load(Ordering::Relaxed)
     }
 
+    /// Get the current dropped frame count
+    pub fn dropped_count(&self) -> u64 {
+        self.dropped_count.load(Ordering::Relaxed)
+    }
+
     /// Get device info string
     pub fn info(&self) -> String {
         format!(
-            "{} {}x{} {} (frames: {})",
+            "{} {}x{} {} (frames: {}, dropped: {})",
             self.device_path,
             self.width,
             self.height,
             self.format.name(),
-            self.frame_count()
+            self.frame_count(),
+            self.dropped_count()
         )
     }
 }

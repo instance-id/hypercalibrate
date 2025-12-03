@@ -49,6 +49,9 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 thiserror = "1"
 
+# Pin home to avoid requiring Rust 1.88+ (transitive dep from bindgen -> which -> home)
+home = "=0.5.9"
+
 # Embedded web assets
 rust-embed = { version = "8", features = ["axum"] }
 mime_guess = "2"

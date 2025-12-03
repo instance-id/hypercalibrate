@@ -13,6 +13,7 @@
             <h1>🎯 HyperCalibrate</h1>
             <div class="header-controls">
                 <button id="toggle-camera-panel" class="btn btn-icon" title="Camera Settings">📷</button>
+                <button id="restart-service-btn" class="btn btn-icon btn-danger-icon" title="Restart HyperCalibrate service">🔄</button>
                 <div class="status" id="status">Connecting...</div>
             </div>
         </header>
@@ -61,15 +62,59 @@
                     <button id="close-camera-panel" class="btn btn-icon btn-small">✕</button>
                 </div>
                 <div class="panel-content">
-                    <div id="camera-controls-loading" class="loading-message">
-                        Loading camera controls...
+                    <!-- Video Settings Section -->
+                    <div class="control-category">
+                        <div class="control-category-title">Video Settings</div>
+                        <div id="video-settings-container">
+                            <div id="video-settings-loading" class="loading-message">
+                                Loading video settings...
+                            </div>
+                            <div id="video-settings-content" class="hidden">
+                                <div class="camera-control">
+                                    <div class="camera-control-header">
+                                        <span class="camera-control-name">Resolution</span>
+                                        <span class="camera-control-value" id="current-resolution">--</span>
+                                    </div>
+                                    <select id="resolution-select" class="camera-control-select">
+                                        <!-- Options populated dynamically -->
+                                    </select>
+                                </div>
+                                <div class="camera-control" style="margin-top: 0.75rem;">
+                                    <div class="camera-control-header">
+                                        <span class="camera-control-name">Frame Rate</span>
+                                        <span class="camera-control-value" id="current-fps">--</span>
+                                    </div>
+                                    <select id="fps-select" class="camera-control-select">
+                                        <!-- Options populated dynamically -->
+                                    </select>
+                                </div>
+                                <div id="pending-settings-notice" class="pending-notice hidden">
+                                    <span class="pending-icon">⚠️</span>
+                                    <span class="pending-text">Changes pending. Restart required.</span>
+                                </div>
+                                <button id="apply-video-settings-btn" class="btn btn-primary btn-full hidden" style="margin-top: 0.75rem;">
+                                    Apply & Restart
+                                </button>
+                            </div>
+                            <div id="video-settings-unavailable" class="unavailable-message hidden">
+                                <p>Video settings are not available.</p>
+                            </div>
+                        </div>
                     </div>
-                    <div id="camera-controls-container" class="camera-controls-container hidden">
-                        <!-- Controls will be dynamically inserted here -->
-                    </div>
-                    <div id="camera-controls-unavailable" class="unavailable-message hidden">
-                        <p>Camera controls are not available.</p>
-                        <p class="hint">Controls will appear after the camera initializes.</p>
+
+                    <!-- Camera Controls Section -->
+                    <div class="control-category">
+                        <div class="control-category-title">Image Controls</div>
+                        <div id="camera-controls-loading" class="loading-message">
+                            Loading camera controls...
+                        </div>
+                        <div id="camera-controls-container" class="camera-controls-container hidden">
+                            <!-- Controls will be dynamically inserted here -->
+                        </div>
+                        <div id="camera-controls-unavailable" class="unavailable-message hidden">
+                            <p>Camera controls are not available.</p>
+                            <p class="hint">Controls will appear after the camera initializes.</p>
+                        </div>
                     </div>
                 </div>
                 <div class="panel-footer">
@@ -107,9 +152,34 @@
                 <span class="separator">|</span>
                 <span id="fps-display" title="Processing FPS">-- fps</span>
                 <span id="latency-display" title="Pipeline latency">-- ms</span>
+                <span class="separator">|</span>
+                <span id="cpu-temp-mini" class="mini-stat" title="CPU Temperature">🌡️ --°C</span>
+                <span id="memory-mini" class="mini-stat" title="Memory Usage">💾 --%</span>
+                <span id="load-mini" class="mini-stat" title="System Load">📈 --</span>
                 <button id="toggle-stats" class="btn-link" title="Toggle detailed stats">📊</button>
             </div>
             <div id="stats-panel" class="stats-panel hidden">
+                <div class="stats-section">
+                    <div class="stats-section-title">System</div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">CPU Temp</span>
+                            <span class="stat-value" id="stat-cpu-temp">-- °C</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Memory</span>
+                            <span class="stat-value" id="stat-memory">-- %</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Load</span>
+                            <span class="stat-value" id="stat-load">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Status</span>
+                            <span class="stat-value" id="stat-throttle">OK</span>
+                        </div>
+                    </div>
+                </div>
                 <div class="stats-section">
                     <div class="stats-section-title">Hardware (camera limited)</div>
                     <div class="stats-grid">

@@ -20,7 +20,9 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::calibration::{calibration_to_ui_points, update_calibration_point, CalibrationPoint};
 use crate::camera_controls::{CameraControl, CameraControlsManager, ControlValue};
 use crate::config::{Calibration, Config};
+use crate::system_stats::SystemStats;
 use crate::transform::PerspectiveTransform;
+use crate::video_settings::{query_camera_capabilities, CameraCapabilities, PendingVideoSettings};
 
 /// Embedded static files for the web UI
 #[derive(RustEmbed)]
@@ -79,6 +81,8 @@ pub struct AppState {
     /// Frame dimensions
     width: u32,
     height: u32,
+    /// Target FPS
+    fps: u32,
     /// Input device path (for camera controls)
     input_device: String,
     /// Camera controls manager
@@ -87,10 +91,14 @@ pub struct AppState {
     preview_clients_active: AtomicBool,
     /// Performance statistics
     pub stats: PerformanceStats,
+    /// Pending video settings that require a restart
+    pending_video_settings: RwLock<PendingVideoSettings>,
+    /// Flag to signal a restart is requested
+    pub restart_requested: AtomicBool,
 }
 
 impl AppState {
-    pub fn new(config: Arc<RwLock<Config>>, config_path: PathBuf, width: u32, height: u32) -> Self {
+    pub fn new(config: Arc<RwLock<Config>>, config_path: PathBuf, width: u32, height: u32, fps: u32) -> Self {
         let (transform, input_device) = {
             let cfg = config.read();
             (
@@ -110,10 +118,13 @@ impl AppState {
             raw_preview_frame: RwLock::new(Vec::new()),
             width,
             height,
+            fps,
             input_device,
             camera_controls: RwLock::new(None),
             preview_clients_active: AtomicBool::new(false),
             stats,
+            pending_video_settings: RwLock::new(PendingVideoSettings::default()),
+            restart_requested: AtomicBool::new(false),
         }
     }
 
@@ -283,6 +294,77 @@ impl AppState {
         let config = self.config.read();
         config.save(&self.config_path)
     }
+
+    /// Get camera capabilities (supported resolutions, framerates)
+    pub fn get_camera_capabilities(&self) -> Result<CameraCapabilities> {
+        query_camera_capabilities(&self.input_device, self.width, self.height, self.fps)
+    }
+
+    /// Get pending video settings
+    pub fn get_pending_video_settings(&self) -> PendingVideoSettings {
+        self.pending_video_settings.read().clone()
+    }
+
+    /// Set pending video settings (will be applied on restart)
+    pub fn set_pending_video_settings(&self, width: Option<u32>, height: Option<u32>, fps: Option<u32>) -> Result<()> {
+        let mut pending = self.pending_video_settings.write();
+
+        // Determine if there are actual changes
+        let width_changed = width.map(|w| w != self.width).unwrap_or(false);
+        let height_changed = height.map(|h| h != self.height).unwrap_or(false);
+        let fps_changed = fps.map(|f| f != self.fps).unwrap_or(false);
+
+        if width_changed || height_changed || fps_changed {
+            pending.width = if width_changed { width } else { None };
+            pending.height = if height_changed { height } else { None };
+            pending.fps = if fps_changed { fps } else { None };
+            pending.needs_restart = true;
+
+            // Also update the config file so it persists across restarts
+            {
+                let mut config = self.config.write();
+                if let Some(w) = width {
+                    config.video.width = w;
+                }
+                if let Some(h) = height {
+                    config.video.height = h;
+                }
+                if let Some(f) = fps {
+                    config.video.fps = f;
+                }
+            }
+
+            // Save to file
+            self.save_config()?;
+
+            tracing::info!(
+                "Video settings changed: {}x{} @ {} fps -> will apply on restart",
+                width.unwrap_or(self.width),
+                height.unwrap_or(self.height),
+                fps.unwrap_or(self.fps)
+            );
+        } else {
+            pending.clear();
+        }
+
+        Ok(())
+    }
+
+    /// Clear pending video settings
+    pub fn clear_pending_video_settings(&self) {
+        self.pending_video_settings.write().clear();
+    }
+
+    /// Request a service restart
+    pub fn request_restart(&self) {
+        tracing::info!("Service restart requested via API");
+        self.restart_requested.store(true, Ordering::SeqCst);
+    }
+
+    /// Check if restart was requested
+    pub fn is_restart_requested(&self) -> bool {
+        self.restart_requested.load(Ordering::SeqCst)
+    }
 }
 
 /// Encode RGB data to JPEG
@@ -327,6 +409,11 @@ pub async fn run_server(addr: &str, state: Arc<AppState>) -> Result<()> {
         .route("/api/camera/control/:id", post(set_camera_control))
         .route("/api/camera/controls/reset", post(reset_camera_controls))
         .route("/api/camera/controls/refresh", post(refresh_camera_controls))
+        // API endpoints - Video Settings (Resolution/Framerate)
+        .route("/api/video/capabilities", get(get_video_capabilities))
+        .route("/api/video/settings", get(get_video_settings))
+        .route("/api/video/settings", post(set_video_settings))
+        .route("/api/system/restart", post(request_system_restart))
         // Preview streams
         .route("/api/preview", get(get_preview))
         .route("/api/preview/raw", get(get_raw_preview))
@@ -335,6 +422,7 @@ pub async fn run_server(addr: &str, state: Arc<AppState>) -> Result<()> {
         .route("/api/info", get(get_info))
         .route("/api/stats", get(get_stats))
         .route("/api/stats/reset", post(reset_stats))
+        .route("/api/system/stats", get(get_system_stats))
         .route("/api/preview/activate", post(activate_preview))
         .route("/api/preview/deactivate", post(deactivate_preview))
         .layer(cors)
@@ -599,6 +687,7 @@ struct InfoResponse {
     version: String,
     width: u32,
     height: u32,
+    fps: u32,
     calibration_enabled: bool,
     camera_controls_available: bool,
 }
@@ -612,6 +701,7 @@ async fn get_info(State(state): State<Arc<AppState>>) -> Json<InfoResponse> {
         version: env!("CARGO_PKG_VERSION").to_string(),
         width: state.width,
         height: state.height,
+        fps: state.fps,
         calibration_enabled: config.calibration.enabled,
         camera_controls_available: has_controls,
     })
@@ -697,6 +787,288 @@ async fn refresh_camera_controls(State(state): State<Arc<AppState>>) -> impl Int
         Ok(_) => StatusCode::OK.into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
+}
+
+// ============================================================================
+// Video Settings API (Resolution/Framerate)
+// ============================================================================
+
+/// Video capabilities response
+#[derive(Serialize)]
+struct VideoCapabilitiesResponse {
+    capabilities: CameraCapabilities,
+    current: CurrentVideoSettings,
+}
+
+/// Current video settings
+#[derive(Serialize)]
+struct CurrentVideoSettings {
+    width: u32,
+    height: u32,
+    fps: u32,
+}
+
+/// Request to change video settings
+#[derive(Deserialize)]
+struct VideoSettingsRequest {
+    width: u32,
+    height: u32,
+    fps: u32,
+}
+
+/// Video settings response
+#[derive(Serialize)]
+struct VideoSettingsResponse {
+    current: CurrentVideoSettings,
+    pending: Option<PendingVideoSettings>,
+    restart_required: bool,
+    message: String,
+}
+
+/// Get video capabilities for the camera
+async fn get_video_capabilities(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match state.get_camera_capabilities() {
+        Ok(capabilities) => {
+            let response = VideoCapabilitiesResponse {
+                capabilities,
+                current: CurrentVideoSettings {
+                    width: state.width,
+                    height: state.height,
+                    fps: state.fps,
+                },
+            };
+            Json(response).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to get video capabilities: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Get current video settings and any pending changes
+async fn get_video_settings(State(state): State<Arc<AppState>>) -> Json<VideoSettingsResponse> {
+    let pending = state.get_pending_video_settings();
+    let has_pending = pending.width.is_some() || pending.height.is_some() || pending.fps.is_some();
+
+    Json(VideoSettingsResponse {
+        current: CurrentVideoSettings {
+            width: state.width,
+            height: state.height,
+            fps: state.fps,
+        },
+        pending: if has_pending { Some(pending) } else { None },
+        restart_required: has_pending,
+        message: if has_pending {
+            "Settings changes are pending. Restart the service to apply them.".to_string()
+        } else {
+            "No pending changes.".to_string()
+        },
+    })
+}
+
+/// Set new video settings (requires restart to take effect)
+async fn set_video_settings(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<VideoSettingsRequest>,
+) -> impl IntoResponse {
+    // Validate the requested settings against camera capabilities
+    match state.get_camera_capabilities() {
+        Ok(caps) => {
+            // Find matching resolution
+            let resolution_valid = caps.resolutions.iter().any(|r| {
+                r.width == request.width && r.height == request.height
+            });
+
+            if !resolution_valid {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": "Invalid resolution",
+                        "message": format!("{}x{} is not supported by this camera", request.width, request.height)
+                    }))
+                ).into_response();
+            }
+
+            // Find matching framerate for this resolution
+            let fps_valid = caps.resolutions.iter()
+                .find(|r| r.width == request.width && r.height == request.height)
+                .map(|r| r.framerates.iter().any(|fr| fr.fps as u32 == request.fps))
+                .unwrap_or(false);
+
+            if !fps_valid {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": "Invalid framerate",
+                        "message": format!("{} fps is not supported at {}x{}", request.fps, request.width, request.height)
+                    }))
+                ).into_response();
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Could not validate settings against camera capabilities: {}", e);
+            // Continue anyway - the settings might still work
+        }
+    }
+
+    // Check if settings are actually different from current
+    let same_as_current =
+        request.width == state.width &&
+        request.height == state.height &&
+        request.fps == state.fps;
+
+    if same_as_current {
+        // Clear any pending settings since we're back to current
+        state.clear_pending_video_settings();
+
+        return Json(serde_json::json!({
+            "success": true,
+            "restart_required": false,
+            "message": "Settings are already at the requested values."
+        })).into_response();
+    }
+
+    // Store pending settings
+    let _ = state.set_pending_video_settings(Some(request.width), Some(request.height), Some(request.fps));
+
+    // Save to config file
+    match save_video_settings_to_config(&state.config_path, request.width, request.height, request.fps) {
+        Ok(_) => {
+            tracing::info!(
+                "Video settings saved: {}x{} @ {} fps (restart required)",
+                request.width, request.height, request.fps
+            );
+
+            Json(serde_json::json!({
+                "success": true,
+                "restart_required": true,
+                "message": format!(
+                    "Settings saved. Restart the service to apply {}x{} @ {} fps.",
+                    request.width, request.height, request.fps
+                )
+            })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to save video settings to config: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "Failed to save settings",
+                    "message": e.to_string()
+                }))
+            ).into_response()
+        }
+    }
+}
+
+/// Save video settings to config file
+fn save_video_settings_to_config(config_path: &std::path::Path, width: u32, height: u32, fps: u32) -> Result<()> {
+    use anyhow::Context;
+    use std::fs;
+    use std::io::Write;
+
+    let content = fs::read_to_string(config_path)
+        .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
+
+    let mut new_lines = Vec::new();
+    let mut in_camera_section = false;
+    let mut found_width = false;
+    let mut found_height = false;
+    let mut found_fps = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Track section changes
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            // If leaving camera section, add any missing settings
+            if in_camera_section {
+                if !found_width {
+                    new_lines.push(format!("width = {}", width));
+                }
+                if !found_height {
+                    new_lines.push(format!("height = {}", height));
+                }
+                if !found_fps {
+                    new_lines.push(format!("fps = {}", fps));
+                }
+            }
+            in_camera_section = trimmed == "[camera]";
+        }
+
+        // Handle camera section settings
+        if in_camera_section {
+            if trimmed.starts_with("width") && trimmed.contains('=') {
+                new_lines.push(format!("width = {}", width));
+                found_width = true;
+                continue;
+            }
+            if trimmed.starts_with("height") && trimmed.contains('=') {
+                new_lines.push(format!("height = {}", height));
+                found_height = true;
+                continue;
+            }
+            if trimmed.starts_with("fps") && trimmed.contains('=') {
+                new_lines.push(format!("fps = {}", fps));
+                found_fps = true;
+                continue;
+            }
+        }
+
+        new_lines.push(line.to_string());
+    }
+
+    // If we ended in camera section, add any missing settings
+    if in_camera_section {
+        if !found_width {
+            new_lines.push(format!("width = {}", width));
+        }
+        if !found_height {
+            new_lines.push(format!("height = {}", height));
+        }
+        if !found_fps {
+            new_lines.push(format!("fps = {}", fps));
+        }
+    }
+
+    // Write back
+    let mut file = fs::File::create(config_path)
+        .with_context(|| format!("Failed to open config file for writing: {}", config_path.display()))?;
+
+    for (i, line) in new_lines.iter().enumerate() {
+        if i > 0 {
+            writeln!(file)?;
+        }
+        write!(file, "{}", line)?;
+    }
+    writeln!(file)?;
+
+    Ok(())
+}
+
+/// Request a system restart
+async fn request_system_restart(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    // Check if there are pending settings
+    let pending = state.get_pending_video_settings();
+    let has_pending = pending.width.is_some() || pending.height.is_some() || pending.fps.is_some();
+
+    if !has_pending {
+        return Json(serde_json::json!({
+            "success": false,
+            "message": "No pending changes to apply."
+        })).into_response();
+    }
+
+    // Request restart
+    state.request_restart();
+
+    tracing::info!("System restart requested to apply video settings");
+
+    Json(serde_json::json!({
+        "success": true,
+        "message": "Restart initiated. The service will restart shortly."
+    })).into_response()
 }
 
 // ============================================================================
@@ -811,4 +1183,13 @@ async fn deactivate_preview(State(state): State<Arc<AppState>>) -> impl IntoResp
     state.set_preview_active(false);
     tracing::info!("Preview encoding deactivated (client disconnected)");
     StatusCode::OK
+}
+
+/// Get system statistics (CPU temp, memory, etc.)
+async fn get_system_stats() -> Json<SystemStats> {
+    // Run in blocking task since it may call vcgencmd
+    let stats = tokio::task::spawn_blocking(SystemStats::gather)
+        .await
+        .unwrap_or_else(|_| SystemStats::gather());
+    Json(stats)
 }

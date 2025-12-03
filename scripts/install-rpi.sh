@@ -80,6 +80,17 @@ else
     exit 1
 fi
 
+# Install setup script for v4l2loopback
+SETUP_SCRIPT="./scripts/setup-v4l2loopback.sh"
+if [ ! -f "$SETUP_SCRIPT" ]; then
+    SETUP_SCRIPT="./setup-v4l2loopback.sh"
+fi
+if [ -f "$SETUP_SCRIPT" ]; then
+    sudo install -m 755 "$SETUP_SCRIPT" /usr/local/bin/hypercalibrate-setup-v4l2loopback
+else
+    echo "⚠️  Warning: setup-v4l2loopback.sh not found, using inline commands"
+fi
+
 # Create config directory and config file
 echo "📁 Setting up configuration..."
 sudo mkdir -p /etc/hypercalibrate
@@ -126,6 +137,7 @@ TOML_CONFIG
 
 # Create systemd service
 # NOTE: Service starts AFTER Hyperion to prevent v4l2loopback from crashing Hyperion
+# The setup script reads resolution from config.toml, so changes via web UI are applied on restart
 echo "⚙️  Creating systemd service..."
 sudo tee /etc/systemd/system/hypercalibrate.service > /dev/null << SERVICE_FILE
 [Unit]
@@ -136,8 +148,8 @@ Wants=hyperion@hyperion.service
 [Service]
 Type=simple
 User=root
-ExecStartPre=/sbin/modprobe v4l2loopback devices=1 video_nr=$VIDEO_NR card_label=HyperCalibrate exclusive_caps=0
-ExecStartPre=/bin/sh -c 'v4l2-ctl -d /dev/video$VIDEO_NR --set-fmt-video-out="width=$CAPTURE_WIDTH,height=$CAPTURE_HEIGHT,pixelformat=YUYV" && v4l2-ctl -d /dev/video$VIDEO_NR --set-ctrl keep_format=1'
+# Setup script reads resolution from config.toml and configures v4l2loopback
+ExecStartPre=/usr/local/bin/hypercalibrate-setup-v4l2loopback /etc/hypercalibrate/config.toml
 ExecStart=/usr/local/bin/hypercalibrate --config /etc/hypercalibrate/config.toml
 Restart=always
 RestartSec=5
