@@ -29,10 +29,11 @@ thread_local! {
 }
 
 /// Supported pixel formats in order of preference
-/// YUYV is preferred as it's widely supported and has consistent timing
+/// MJPEG is preferred for high FPS cameras - compressed format uses less USB bandwidth
+/// and allows higher frame rates. Modern CPUs decode MJPEG very fast with turbojpeg SIMD.
 const PREFERRED_FORMATS: &[&[u8; 4]] = &[
-    b"YUYV", // YUV 4:2:2 - uncompressed, predictable timing
-    b"MJPG", // Motion JPEG - compressed, uses turbojpeg SIMD for fast decode
+    b"MJPG", // Motion JPEG - compressed, enables high FPS (60/120), fast turbojpeg SIMD decode
+    b"YUYV", // YUV 4:2:2 - uncompressed, limited to ~30fps at 640x480 due to USB bandwidth
     b"RGB3", // RGB24 - simple but less common
     b"BGR3", // BGR24 - simple but less common
 ];
@@ -224,8 +225,14 @@ pub fn run_pipeline(
             let elapsed = last_stats_time.elapsed().as_secs_f64();
             let fps_actual = frame_count as f64 / elapsed;
             let preview_status = if state.should_encode_preview() { "active" } else { "inactive" };
-            info!("Performance: {:.1} fps ({} frames in {:.1}s, preview {})",
-                fps_actual, frame_count, elapsed, preview_status);
+            let dropped = output.dropped_count();
+            if dropped > 0 {
+                info!("Performance: {:.1} fps ({} frames in {:.1}s, {} dropped, preview {})",
+                    fps_actual, frame_count, elapsed, dropped, preview_status);
+            } else {
+                info!("Performance: {:.1} fps ({} frames in {:.1}s, preview {})",
+                    fps_actual, frame_count, elapsed, preview_status);
+            }
             frame_count = 0;
             last_stats_time = Instant::now();
         }

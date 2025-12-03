@@ -10,11 +10,14 @@ mod capture;
 mod config;
 mod output;
 mod server;
+mod system_stats;
 mod transform;
+mod video_settings;
 
 use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -98,6 +101,7 @@ async fn main() -> Result<()> {
         args.config.clone(),
         width,
         height,
+        fps,
     ));
 
     // Start the video processing pipeline
@@ -120,8 +124,24 @@ async fn main() -> Result<()> {
     let addr = format!("{}:{}", host, port);
     info!("Starting web server at http://{}", addr);
 
+    let server_state = state.clone();
     let server_handle = tokio::spawn(async move {
-        server::run_server(&addr, state).await
+        server::run_server(&addr, server_state).await
+    });
+
+    // Spawn a task to monitor for restart requests
+    let restart_state = state.clone();
+    let restart_monitor = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            if restart_state.restart_requested.load(Ordering::SeqCst) {
+                info!("Restart requested, initiating service restart...");
+                // Give the API response time to complete
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                // Exit with code 0 - systemd will restart us
+                std::process::exit(0);
+            }
+        }
     });
 
     // Wait for either to finish (or error)
@@ -139,6 +159,9 @@ async fn main() -> Result<()> {
                 Ok(Err(e)) => tracing::error!("Server error: {}", e),
                 Err(e) => tracing::error!("Server task panicked: {}", e),
             }
+        }
+        _ = restart_monitor => {
+            info!("Restart monitor exited");
         }
     }
 

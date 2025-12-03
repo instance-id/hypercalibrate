@@ -401,6 +401,64 @@ y = 0.9
 edge_points = []
 TOML_CONFIG
 
+# Install the v4l2loopback setup script
+echo "📋 Installing setup script..."
+cat > /usr/local/bin/hypercalibrate-setup << 'SETUP_SCRIPT'
+#!/bin/bash
+#===============================================================================
+# HyperCalibrate - v4l2loopback Setup Script
+# Reads video settings from config and configures v4l2loopback accordingly
+#===============================================================================
+
+set -e
+
+CONFIG_FILE="\${1:-/etc/hypercalibrate/config.toml}"
+
+# Default values
+DEFAULT_WIDTH=640
+DEFAULT_HEIGHT=480
+DEFAULT_VIDEO_NR=10
+
+# Parse config file for video settings
+parse_config() {
+    local key="\$1"
+    local default="\$2"
+
+    if [ -f "\$CONFIG_FILE" ]; then
+        local value
+        value=\$(grep -A 20 '^\[video\]' "\$CONFIG_FILE" 2>/dev/null | grep "^\$key\s*=" | head -1 | cut -d'=' -f2 | tr -d ' "' || true)
+        if [ -z "\$value" ]; then
+            value=\$(grep -A 20 '^\[camera\]' "\$CONFIG_FILE" 2>/dev/null | grep "^\$key\s*=" | head -1 | cut -d'=' -f2 | tr -d ' "' || true)
+        fi
+        if [ -n "\$value" ]; then
+            echo "\$value"
+            return
+        fi
+    fi
+    echo "\$default"
+}
+
+WIDTH=\$(parse_config "width" "\$DEFAULT_WIDTH")
+HEIGHT=\$(parse_config "height" "\$DEFAULT_HEIGHT")
+OUTPUT_DEVICE=\$(parse_config "output_device" "/dev/video\$DEFAULT_VIDEO_NR")
+VIDEO_NR="\${OUTPUT_DEVICE##*/video}"
+
+echo "Setting up v4l2loopback: \${WIDTH}x\${HEIGHT} on /dev/video\${VIDEO_NR}"
+
+# Unload and reload module
+modprobe -r v4l2loopback 2>/dev/null || true
+modprobe v4l2loopback devices=1 video_nr="\$VIDEO_NR" card_label="HyperCalibrate" exclusive_caps=0
+
+sleep 0.5
+
+# Set video format from config
+v4l2-ctl -d "/dev/video\${VIDEO_NR}" --set-fmt-video-out="width=\${WIDTH},height=\${HEIGHT},pixelformat=YUYV" 2>/dev/null || true
+v4l2-ctl -d "/dev/video\${VIDEO_NR}" --set-ctrl keep_format=1 2>/dev/null || true
+
+echo "v4l2loopback ready"
+SETUP_SCRIPT
+chmod +x /usr/local/bin/hypercalibrate-setup
+
 # Create systemd service
 # NOTE: Service starts AFTER Hyperion to prevent v4l2loopback from crashing Hyperion
 echo "⚙️  Creating systemd service..."
@@ -413,8 +471,7 @@ Wants=hyperion@hyperion.service
 [Service]
 Type=simple
 User=root
-ExecStartPre=/sbin/modprobe v4l2loopback devices=1 video_nr=VIDEO_NR_PLACEHOLDER card_label=HyperCalibrate exclusive_caps=0
-ExecStartPre=/bin/sh -c 'v4l2-ctl -d /dev/videoVIDEO_NR_PLACEHOLDER --set-fmt-video-out="width=WIDTH_PLACEHOLDER,height=HEIGHT_PLACEHOLDER,pixelformat=YUYV" && v4l2-ctl -d /dev/videoVIDEO_NR_PLACEHOLDER --set-ctrl keep_format=1'
+ExecStartPre=/usr/local/bin/hypercalibrate-setup /etc/hypercalibrate/config.toml
 ExecStart=/usr/local/bin/hypercalibrate --config /etc/hypercalibrate/config.toml
 Restart=always
 RestartSec=5
@@ -424,11 +481,6 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 SERVICE_FILE
-
-# Replace placeholder in service file
-sed -i "s/VIDEO_NR_PLACEHOLDER/\$VIDEO_NR/g" /etc/systemd/system/hypercalibrate.service
-sed -i "s/WIDTH_PLACEHOLDER/\$CAPTURE_WIDTH/g" /etc/systemd/system/hypercalibrate.service
-sed -i "s/HEIGHT_PLACEHOLDER/\$CAPTURE_HEIGHT/g" /etc/systemd/system/hypercalibrate.service
 
 # Enable and start service
 echo "🚀 Starting service..."

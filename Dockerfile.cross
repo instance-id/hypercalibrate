@@ -1,7 +1,9 @@
 # Dockerfile for cross-compiling HyperCalibrate for Raspberry Pi
 # Supports both aarch64 (64-bit) and armv7 (32-bit) targets
 
-FROM rust:latest
+# Pin to Rust 1.85 on Bookworm - needed for home crate edition2024
+# rust:latest requires glibc 2.39+ which is newer than Raspberry Pi OS (glibc 2.36)
+FROM rust:1.85-bookworm
 
 # Install cross-compilation tools, cmake, and libclang for bindgen
 # g++-aarch64-linux-gnu is needed for turbojpeg-sys (libjpeg-turbo)
