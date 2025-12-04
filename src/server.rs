@@ -425,6 +425,9 @@ pub async fn run_server(addr: &str, state: Arc<AppState>) -> Result<()> {
         .route("/api/system/stats", get(get_system_stats))
         .route("/api/preview/activate", post(activate_preview))
         .route("/api/preview/deactivate", post(deactivate_preview))
+        // Debug logging
+        .route("/api/debug/log", post(post_debug_log))
+        .route("/api/debug/clear", post(clear_debug_log))
         .layer(cors)
         .with_state(state);
 
@@ -1192,4 +1195,81 @@ async fn get_system_stats() -> Json<SystemStats> {
         .await
         .unwrap_or_else(|_| SystemStats::gather());
     Json(stats)
+}
+
+// ============================================================================
+// Debug Logging
+// ============================================================================
+
+/// Debug log file path
+const DEBUG_LOG_PATH: &str = "/tmp/hypercalibrate-debug.log";
+
+/// Debug log request
+#[derive(Deserialize)]
+struct DebugLogRequest {
+    entries: Vec<DebugLogEntry>,
+}
+
+#[derive(Deserialize)]
+struct DebugLogEntry {
+    time: String,
+    #[serde(rename = "type")]
+    log_type: String,
+    message: String,
+}
+
+/// Post debug log entries to file
+async fn post_debug_log(Json(payload): Json<DebugLogRequest>) -> impl IntoResponse {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let result = tokio::task::spawn_blocking(move || {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(DEBUG_LOG_PATH)?;
+
+        for entry in &payload.entries {
+            writeln!(file, "{} [{}] {}", entry.time, entry.log_type, entry.message)?;
+        }
+
+        Ok::<_, std::io::Error>(())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(())) => StatusCode::OK,
+        Ok(Err(e)) => {
+            tracing::error!("Failed to write debug log: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+        Err(e) => {
+            tracing::error!("Debug log task failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
+}
+
+/// Clear the debug log file
+async fn clear_debug_log() -> impl IntoResponse {
+    let result = tokio::task::spawn_blocking(|| {
+        std::fs::write(DEBUG_LOG_PATH, "")?;
+        Ok::<_, std::io::Error>(())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(())) => {
+            tracing::info!("Debug log cleared");
+            StatusCode::OK
+        }
+        Ok(Err(e)) => {
+            tracing::error!("Failed to clear debug log: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+        Err(e) => {
+            tracing::error!("Clear debug log task failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
 }
