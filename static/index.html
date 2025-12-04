@@ -13,10 +13,23 @@
             <h1>🎯 HyperCalibrate</h1>
             <div class="header-controls">
                 <button id="toggle-camera-panel" class="btn btn-icon" title="Camera Settings">📷</button>
+                <button id="toggle-debug" class="btn btn-icon" title="Toggle Touch Debug">🐛</button>
                 <button id="restart-service-btn" class="btn btn-icon btn-danger-icon" title="Restart HyperCalibrate service">🔄</button>
                 <div class="status" id="status">Connecting...</div>
             </div>
         </header>
+
+        <!-- Debug overlay for touch events -->
+        <div id="debug-overlay" class="debug-overlay hidden">
+            <div class="debug-header">
+                <span>Touch Debug</span>
+                <div class="debug-buttons">
+                    <button id="debug-select-all" class="btn btn-small">Select All</button>
+                    <button id="debug-clear" class="btn btn-small">Clear</button>
+                </div>
+            </div>
+            <div id="debug-log" class="debug-log"></div>
+        </div>
 
         <main>
             <div class="preview-section">
@@ -138,9 +151,12 @@
                 </div>
 
                 <div class="help-text">
-                    <p>Drag <span class="corner-indicator">●</span> corners to match TV boundaries.
+                    <p class="help-text-desktop">Drag <span class="corner-indicator">●</span> corners to match TV boundaries.
                     <kbd>Shift</kbd>+click on an edge to add a <span class="edge-indicator">●</span> midpoint.
                     <kbd>Ctrl</kbd>+click a midpoint to remove it.</p>
+                    <p class="help-text-mobile">Drag <span class="corner-indicator">●</span> corners to match TV boundaries.
+                    Long-press on an edge to add a <span class="edge-indicator">●</span> midpoint.
+                    Long-press a midpoint to remove it.</p>
                 </div>
             </div>
         </main>
@@ -238,6 +254,6 @@
     <!-- Toast notification -->
     <div id="toast" class="toast"></div>
 
-    <script src="/static/app.js"></script>
+    <script type="module" src="/static/app.js"></script>
 </body>
 </html>
