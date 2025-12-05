@@ -1052,25 +1052,24 @@ fn save_video_settings_to_config(config_path: &std::path::Path, width: u32, heig
 
 /// Request a system restart
 async fn request_system_restart(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    // Check if there are pending settings
-    let pending = state.get_pending_video_settings();
-    let has_pending = pending.width.is_some() || pending.height.is_some() || pending.fps.is_some();
-
-    if !has_pending {
-        return Json(serde_json::json!({
-            "success": false,
-            "message": "No pending changes to apply."
-        })).into_response();
-    }
-
     // Request restart
     state.request_restart();
 
-    tracing::info!("System restart requested to apply video settings");
+    // Check if there are pending settings for the message
+    let pending = state.get_pending_video_settings();
+    let has_pending = pending.width.is_some() || pending.height.is_some() || pending.fps.is_some();
+
+    let message = if has_pending {
+        "Restart initiated to apply pending video settings. The service will restart shortly."
+    } else {
+        "Restart initiated. The service will restart shortly."
+    };
+
+    tracing::info!("System restart requested via API");
 
     Json(serde_json::json!({
         "success": true,
-        "message": "Restart initiated. The service will restart shortly."
+        "message": message
     })).into_response()
 }
 

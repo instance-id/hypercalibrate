@@ -11,7 +11,7 @@
 export function showToast(message, type = 'success') {
     const toast = document.getElementById('toast');
     if (!toast) return;
-    
+
     toast.textContent = message;
     toast.className = 'toast ' + type + ' show';
 
@@ -22,14 +22,30 @@ export function showToast(message, type = 'success') {
 
 /**
  * Set the connection status indicator
- * @param {HTMLElement} statusElement - The status element
- * @param {string} text - Status text
- * @param {string} className - CSS class ('connected', 'error', 'warning')
+ * Can be called as setStatus(text, className) or setStatus(element, text, className)
+ * @param {HTMLElement|string} elementOrText - The status element or status text
+ * @param {string} textOrClass - Status text or CSS class
+ * @param {string} [className] - CSS class ('connected', 'error', 'warning')
  */
-export function setStatus(statusElement, text, className) {
+export function setStatus(elementOrText, textOrClass, className) {
+    let statusElement, text, cssClass;
+
+    // Detect which signature is being used
+    if (typeof elementOrText === 'string') {
+        // Called as setStatus(text, className)
+        statusElement = document.getElementById('status');
+        text = elementOrText;
+        cssClass = textOrClass;
+    } else {
+        // Called as setStatus(element, text, className)
+        statusElement = elementOrText;
+        text = textOrClass;
+        cssClass = className;
+    }
+
     if (!statusElement) return;
     statusElement.textContent = text;
-    statusElement.className = 'status ' + className;
+    statusElement.className = 'status ' + cssClass;
 }
 
 /**

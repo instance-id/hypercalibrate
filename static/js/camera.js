@@ -248,6 +248,12 @@ export class CameraManager {
         slider.step = control.step || 1;
         slider.value = this.getControlValue(control);
         slider.dataset.controlName = controlName;
+        slider.dataset.defaultValue = control.default;
+
+        // Calculate snap threshold (2% of range, minimum of 1 step)
+        const range = control.maximum - control.minimum;
+        const snapThreshold = Math.max(range * 0.02, control.step || 1);
+        slider.dataset.snapThreshold = snapThreshold;
 
         // Check dependencies
         const dependency = this.controlDependencies[controlName];
@@ -266,13 +272,29 @@ export class CameraManager {
             slider.disabled = true;
         }
 
+        const isAtDefault = parseInt(slider.value) === control.default;
         valueEl.textContent = slider.value;
         if (slider.disabled) {
             valueEl.textContent += ' (inactive)';
+        } else if (isAtDefault) {
+            valueEl.classList.add('at-default');
         }
 
         slider.addEventListener('input', (e) => {
-            valueEl.textContent = e.target.value + (e.target.disabled ? ' (inactive)' : '');
+            let value = parseInt(e.target.value);
+            const defaultVal = parseInt(e.target.dataset.defaultValue);
+            const threshold = parseFloat(e.target.dataset.snapThreshold);
+
+            // Snap to default if within threshold
+            if (Math.abs(value - defaultVal) <= threshold) {
+                value = defaultVal;
+                e.target.value = value;
+                valueEl.classList.add('at-default');
+            } else {
+                valueEl.classList.remove('at-default');
+            }
+
+            valueEl.textContent = value + (e.target.disabled ? ' (inactive)' : '');
         });
 
         slider.addEventListener('change', (e) => {

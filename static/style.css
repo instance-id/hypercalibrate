@@ -1,1010 +1,1014 @@
 /* HyperCalibrate - Calibration UI Styles */
 
 :root {
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #262626;
-    --bg-tertiary: #515151;
-    --accent: #e94560;
-    --accent-hover: #ff6b6b;
-    --success: #4ecca3;
-    --warning: #ffc107;
-    --text-primary: #ffffff;
-    --text-secondary: #a0a0a0;
-    --corner-color: #e94560;
-    --edge-color: #4ecca3;
-    --grid-color: rgba(255, 255, 255, 0.3);
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #262626;
+  --bg-tertiary: #515151;
+  --accent: #e94560;
+  --accent-hover: #ff6b6b;
+  --success: #4ecca3;
+  --warning: #ffc107;
+  --text-primary: #ffffff;
+  --text-secondary: #a0a0a0;
+  --corner-color: #e94560;
+  --edge-color: #4ecca3;
+  --grid-color: rgba(255, 255, 255, 0.3);
 }
 
 * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-html, body {
-    height: 100%;
-    height: 100dvh; /* Dynamic viewport height for better mobile support */
-    overflow: hidden;
+html,
+body {
+  height: 100%;
+  height: 100dvh; /* Dynamic viewport height for better mobile support */
+  overflow: hidden;
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    line-height: 1.6;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
 }
 
 .container {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    max-width: 100%;
-    padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 100%;
+  padding: 1rem;
 }
 
 /* Header */
 header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
-    margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  margin-bottom: 0.2rem;
 }
 
 header h1 {
-    font-size: 1.5rem;
-    font-weight: 600;
+  font-size: 1.5rem;
+  font-weight: 600;
 }
 
 .header-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .status {
-    padding: 0.25rem 0.75rem;
-    border-radius: 1rem;
-    font-size: 0.875rem;
-    background: var(--bg-tertiary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.875rem;
+  background: var(--bg-tertiary);
 }
 
 .status.connected {
-    background: var(--success);
-    color: var(--bg-primary);
+  background: var(--success);
+  color: var(--bg-primary);
 }
 
 .status.warning {
-    background: var(--warning);
-    color: var(--bg-primary);
+  background: var(--warning);
+  color: var(--bg-primary);
 }
 
 .status.error {
-    background: var(--accent);
+  background: var(--accent);
 }
 
 /* Main content */
 main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    overflow: hidden;
-    min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow: hidden;
+  min-height: 0;
 }
 
 /* Preview section with toolbar */
 .preview-section {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 200px;
-    overflow: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+  overflow: hidden;
 }
 
 .preview-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem;
-    background: var(--bg-secondary);
-    border-radius: 0.5rem 0.5rem 0 0;
-    border-bottom: 1px solid var(--bg-tertiary);
-    flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--bg-secondary);
+  border-radius: 0.5rem 0.5rem 0 0;
+  border-bottom: 1px solid var(--bg-tertiary);
+  flex-shrink: 0;
 }
 
 .preview-mode,
 .preview-options {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .toggle-compact {
-    gap: 0.5rem;
+  gap: 0.5rem;
 }
 
 .toggle-compact .toggle-slider {
-    width: 36px;
-    height: 20px;
-    border-radius: 10px;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
 }
 
 .toggle-compact .toggle-slider::after {
-    width: 14px;
-    height: 14px;
-    top: 3px;
-    left: 3px;
+  width: 14px;
+  height: 14px;
+  top: 3px;
+  left: 3px;
 }
 
 .toggle-compact input:checked + .toggle-slider::after {
-    transform: translateX(16px);
+  transform: translateX(16px);
 }
 
 .toggle-compact .toggle-label {
-    font-size: 0.8rem;
+  font-size: 0.8rem;
 }
 
 /* Preview container */
 .preview-container {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--bg-secondary);
+  border-radius: 0 0 0.5rem 0.5rem;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;
+}
+
+.preview-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+#preview {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+/* Calibration overlay - must match image exactly */
+.calibration-overlay {
+  position: absolute;
+  pointer-events: none;
+  overflow: visible;
+  touch-action: none;
+}
+
+/* On touch devices, the overlay needs to receive touch events */
+@media (pointer: coarse) {
+  .calibration-overlay {
+    pointer-events: auto;
+  }
+}
+
+.calibration-overlay .grid-lines line.grid-line {
+  stroke: var(--grid-color);
+  stroke-width: 2;
+  stroke-dasharray: 5, 5;
+  fill: none;
+}
+
+.calibration-overlay .grid-lines .edge-segment {
+  stroke: transparent;
+  stroke-width: 20;
+  fill: none;
+  cursor: crosshair;
+  pointer-events: stroke;
+}
+
+.calibration-overlay .grid-lines .edge-segment:hover {
+  stroke: rgba(78, 204, 163, 0.3);
+}
+
+.calibration-point {
+  pointer-events: all;
+  cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.calibration-point:active {
+  cursor: grabbing;
+}
+
+.calibration-point.corner circle {
+  fill: var(--corner-color);
+  fill-opacity: 0.5;
+  stroke: white;
+  stroke-width: 2;
+  stroke-opacity: 0.9;
+}
+
+.calibration-point.edge circle {
+  fill: var(--edge-color);
+  fill-opacity: 0.5;
+  stroke: white;
+  stroke-width: 2;
+  stroke-opacity: 0.9;
+}
+
+.calibration-point circle {
+  transition: r 0.15s ease, fill-opacity 0.15s ease;
+}
+
+.calibration-point:hover circle,
+.calibration-point.dragging circle {
+  r: 14;
+  fill-opacity: 0.8;
+}
+
+.calibration-point text {
+  fill: white;
+  font-size: 10px;
+  font-weight: bold;
+  text-anchor: middle;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Controls */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 0.5rem;
+}
+
+.control-group {
+  flex: 1;
+  min-width: 150px;
+}
+
+/* Toggle switch */
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.toggle input {
+  display: none;
+}
+
+.toggle-slider {
+  width: 48px;
+  height: 26px;
+  background: var(--bg-tertiary);
+  border-radius: 13px;
+  position: relative;
+  transition: background 0.3s;
+}
+
+.toggle-slider::after {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.3s;
+}
+
+.toggle input:checked + .toggle-slider {
+  background: var(--success);
+}
+
+.toggle input:checked + .toggle-slider::after {
+  transform: translateX(22px);
+}
+
+.toggle-label {
+  font-size: 0.9rem;
+}
+
+/* Buttons */
+.button-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-primary);
+}
+
+.btn-danger {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #c82333;
+}
+
+.btn-danger-icon {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-danger-icon:hover {
+  background: rgba(220, 53, 69, 0.2);
+  color: #dc3545;
+}
+
+/* Help text */
+.help-text {
+  flex: 100%;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.help-text kbd {
+  background: var(--bg-tertiary);
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.corner-indicator {
+  color: var(--corner-color);
+  font-size: 1.2em;
+}
+
+.edge-indicator {
+  color: var(--edge-color);
+  font-size: 1.2em;
+}
+
+/* Footer */
+footer {
+  padding: 0.5rem 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+#info {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+#info .separator {
+  color: var(--bg-tertiary);
+}
+
+#fps-display {
+  color: var(--success);
+  font-family: monospace;
+}
+
+#latency-display {
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+.mini-stat {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.mini-stat.temp-ok {
+  color: var(--success);
+}
+
+.mini-stat.temp-warning {
+  color: var(--warning);
+}
+
+.mini-stat.temp-critical {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 1rem;
+  transition: color 0.2s;
+}
+
+.btn-link:hover {
+  color: var(--text-primary);
+}
+
+/* Stats Panel */
+.stats-panel {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 0.5rem;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.stats-panel.hidden {
+  display: none;
+}
+
+.stats-section {
+  margin-bottom: 0.75rem;
+}
+
+.stats-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.stats-section-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--bg-primary);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--bg-primary);
+  border-radius: 0.375rem;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.stat-value {
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+/* Temperature/status color coding */
+.stat-value.temp-ok {
+  color: var(--success);
+}
+
+.stat-value.temp-warning {
+  color: var(--warning);
+}
+
+.stat-value.temp-critical {
+  color: var(--error);
+  font-weight: bold;
+}
+
+.stats-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.preview-status {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  background: var(--bg-primary);
+}
+
+.preview-status.active {
+  color: var(--success);
+}
+
+.preview-status.inactive {
+  color: var(--text-secondary);
+}
+
+/* Preview pause button state */
+.btn.preview-paused {
+  background: var(--warning);
+  color: var(--bg-primary);
+}
+
+.btn.preview-paused:hover {
+  background: #e6ac00;
+}
+
+@media (max-width: 400px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Debug overlay for touch events */
+.debug-overlay {
+  position: fixed;
+  bottom: 60px;
+  right: 10px;
+  width: 320px;
+  max-height: 300px;
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid var(--primary-color);
+  border-radius: 8px;
+  z-index: 10000;
+  font-family: monospace;
+  font-size: 11px;
+  overflow: hidden;
+}
+
+.debug-overlay.hidden {
+  display: none;
+}
+
+.debug-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: var(--primary-color);
+  color: black;
+  font-weight: bold;
+}
+
+.debug-header .debug-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.debug-header .btn {
+  padding: 2px 8px;
+  font-size: 10px;
+}
+
+.debug-log {
+  padding: 8px;
+  max-height: 250px;
+  overflow-y: auto;
+  color: #0f0;
+}
+
+.debug-log .debug-entry {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #333;
+}
+
+.debug-log .debug-entry:last-child {
+  border-bottom: none;
+}
+
+.debug-log .debug-time {
+  color: #888;
+}
+
+.debug-log .debug-event {
+  color: #ff0;
+}
+
+.debug-log .debug-coords {
+  color: #0ff;
+}
+
+.debug-log .debug-hit {
+  color: #0f0;
+}
+
+.debug-log .debug-miss {
+  color: #f66;
+}
+
+.debug-log .debug-info {
+  color: #aaa;
+}
+
+@media (max-width: 480px) {
+  .debug-overlay {
+    width: calc(100% - 20px);
+    left: 10px;
+    right: 10px;
+    bottom: 50px;
+    max-height: 200px;
+  }
+
+  .debug-log {
+    max-height: 150px;
+    font-size: 10px;
+  }
+}
+
+/* Toast notifications */
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: var(--bg-secondary);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 1000;
+}
+
+.toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+.toast.success {
+  border-left: 4px solid var(--success);
+}
+
+.toast.error {
+  border-left: 4px solid var(--accent);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .container {
+    padding: 0.5rem;
+    /* Ensure container fills available space properly on all mobile browsers */
+    height: 100%;
+    height: 100dvh;
+    height: -webkit-fill-available;
+    min-height: 100%;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
+  }
+
+  header h1 {
+    font-size: 1.2rem;
+  }
+
+  .controls {
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    flex-shrink: 0; /* Don't shrink controls */
+  }
+
+  .button-group {
+    width: 100%;
+  }
+
+  .btn {
+    flex: 1;
+  }
+
+  /* Ensure preview section takes available space */
+  main {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .preview-section {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .preview-container {
+    flex: 1;
+    min-height: 0;
+    /* Force preview to expand */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .preview-wrapper {
     flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
-    background: var(--bg-secondary);
-    border-radius: 0 0 0.5rem 0.5rem;
-    overflow: hidden;
-    min-height: 0;
-    position: relative;
-}
+    max-height: 100%;
+  }
 
-.preview-wrapper {
-    position: relative;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-}
-
-#preview {
+  /* Make image fill as much space as possible while maintaining aspect ratio */
+  #preview {
     max-width: 100%;
     max-height: 100%;
     width: auto;
     height: auto;
     object-fit: contain;
-    display: block;
-}
-
-/* Calibration overlay - must match image exactly */
-.calibration-overlay {
-    position: absolute;
-    pointer-events: none;
-    overflow: visible;
-    touch-action: none;
-}
-
-/* On touch devices, the overlay needs to receive touch events */
-@media (pointer: coarse) {
-    .calibration-overlay {
-        pointer-events: auto;
-    }
-}
-
-.calibration-overlay .grid-lines line.grid-line {
-    stroke: var(--grid-color);
-    stroke-width: 2;
-    stroke-dasharray: 5, 5;
-    fill: none;
-}
-
-.calibration-overlay .grid-lines .edge-segment {
-    stroke: transparent;
-    stroke-width: 20;
-    fill: none;
-    cursor: crosshair;
-    pointer-events: stroke;
-}
-
-.calibration-overlay .grid-lines .edge-segment:hover {
-    stroke: rgba(78, 204, 163, 0.3);
-}
-
-.calibration-point {
-    pointer-events: all;
-    cursor: grab;
-    touch-action: none;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
-}
-
-.calibration-point:active {
-    cursor: grabbing;
-}
-
-.calibration-point.corner circle {
-    fill: var(--corner-color);
-    fill-opacity: 0.5;
-    stroke: white;
-    stroke-width: 2;
-    stroke-opacity: 0.9;
-}
-
-.calibration-point.edge circle {
-    fill: var(--edge-color);
-    fill-opacity: 0.5;
-    stroke: white;
-    stroke-width: 2;
-    stroke-opacity: 0.9;
-}
-
-.calibration-point circle {
-    transition: r 0.15s ease, fill-opacity 0.15s ease;
-}
-
-.calibration-point:hover circle,
-.calibration-point.dragging circle {
-    r: 14;
-    fill-opacity: 0.8;
-}
-
-.calibration-point text {
-    fill: white;
-    font-size: 10px;
-    font-weight: bold;
-    text-anchor: middle;
-    pointer-events: none;
-    user-select: none;
-}
-
-/* Controls */
-.controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    padding: 1rem;
-    background: var(--bg-secondary);
-    border-radius: 0.5rem;
-}
-
-.control-group {
-    flex: 1;
-    min-width: 150px;
-}
-
-/* Toggle switch */
-.toggle {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    cursor: pointer;
-}
-
-.toggle input {
-    display: none;
-}
-
-.toggle-slider {
-    width: 48px;
-    height: 26px;
-    background: var(--bg-tertiary);
-    border-radius: 13px;
-    position: relative;
-    transition: background 0.3s;
-}
-
-.toggle-slider::after {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    background: white;
-    border-radius: 50%;
-    top: 3px;
-    left: 3px;
-    transition: transform 0.3s;
-}
-
-.toggle input:checked + .toggle-slider {
-    background: var(--success);
-}
-
-.toggle input:checked + .toggle-slider::after {
-    transform: translateX(22px);
-}
-
-.toggle-label {
-    font-size: 0.9rem;
-}
-
-/* Buttons */
-.button-group {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.btn {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 0.375rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.btn-primary {
-    background: var(--accent);
-    color: white;
-}
-
-.btn-primary:hover {
-    background: var(--accent-hover);
-}
-
-.btn-secondary {
-    background: var(--bg-tertiary);
-    color: white;
-}
-
-.btn-secondary:hover {
-    background: var(--bg-primary);
-}
-
-.btn-danger {
-    background: #dc3545;
-    color: white;
-}
-
-.btn-danger:hover {
-    background: #c82333;
-}
-
-.btn-danger-icon {
-    background: transparent;
-    color: var(--text-secondary);
-}
-
-.btn-danger-icon:hover {
-    background: rgba(220, 53, 69, 0.2);
-    color: #dc3545;
-}
-
-/* Help text */
-.help-text {
-    flex: 100%;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-}
-
-.help-text kbd {
-    background: var(--bg-tertiary);
-    padding: 0.1em 0.4em;
-    border-radius: 3px;
-    font-family: monospace;
-    font-size: 0.9em;
-}
-
-.corner-indicator {
-    color: var(--corner-color);
-    font-size: 1.2em;
-}
-
-.edge-indicator {
-    color: var(--edge-color);
-    font-size: 1.2em;
-}
-
-/* Footer */
-footer {
-    padding: 0.5rem 0;
-    text-align: center;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-}
-
-#info {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-}
-
-#info .separator {
-    color: var(--bg-tertiary);
-}
-
-#fps-display {
-    color: var(--success);
-    font-family: monospace;
-}
-
-#latency-display {
-    color: var(--text-secondary);
-    font-family: monospace;
-}
-
-.mini-stat {
-    font-family: monospace;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-}
-
-.mini-stat.temp-ok {
-    color: var(--success);
-}
-
-.mini-stat.temp-warning {
-    color: var(--warning);
-}
-
-.mini-stat.temp-critical {
-    color: var(--accent);
-    font-weight: bold;
-}
-
-.btn-link {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 0.25rem;
-    font-size: 1rem;
-    transition: color 0.2s;
-}
-
-.btn-link:hover {
-    color: var(--text-primary);
-}
-
-/* Stats Panel */
-.stats-panel {
-    margin-top: 0.75rem;
-    padding: 0.75rem;
-    background: var(--bg-secondary);
-    border-radius: 0.5rem;
-    max-width: 500px;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-.stats-panel.hidden {
-    display: none;
-}
-
-.stats-section {
-    margin-bottom: 0.75rem;
-}
-
-.stats-section:last-of-type {
-    margin-bottom: 0;
-}
-
-.stats-section-title {
-    font-size: 0.65rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary);
-    margin-bottom: 0.5rem;
-    padding-bottom: 0.25rem;
-    border-bottom: 1px solid var(--bg-primary);
-}
-
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-}
-
-.stat-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 0.5rem;
-    background: var(--bg-primary);
-    border-radius: 0.375rem;
-}
-
-.stat-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary);
-    margin-bottom: 0.25rem;
-}
-
-.stat-value {
-    font-family: monospace;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-}
-
-/* Temperature/status color coding */
-.stat-value.temp-ok {
-    color: var(--success);
-}
-
-.stat-value.temp-warning {
-    color: var(--warning);
-}
-
-.stat-value.temp-critical {
-    color: var(--error);
-    font-weight: bold;
-}
-
-.stats-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.preview-status {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    background: var(--bg-primary);
-}
-
-.preview-status.active {
-    color: var(--success);
-}
-
-.preview-status.inactive {
-    color: var(--text-secondary);
-}
-
-/* Preview pause button state */
-.btn.preview-paused {
-    background: var(--warning);
-    color: var(--bg-primary);
-}
-
-.btn.preview-paused:hover {
-    background: #e6ac00;
-}
-
-@media (max-width: 400px) {
-    .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-/* Debug overlay for touch events */
-.debug-overlay {
-    position: fixed;
-    bottom: 60px;
-    right: 10px;
-    width: 320px;
-    max-height: 300px;
-    background: rgba(0, 0, 0, 0.9);
-    border: 1px solid var(--primary-color);
-    border-radius: 8px;
-    z-index: 10000;
-    font-family: monospace;
-    font-size: 11px;
-    overflow: hidden;
-}
-
-.debug-overlay.hidden {
-    display: none;
-}
-
-.debug-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 10px;
-    background: var(--primary-color);
-    color: black;
-    font-weight: bold;
-}
-
-.debug-header .debug-buttons {
-    display: flex;
-    gap: 4px;
-}
-
-.debug-header .btn {
-    padding: 2px 8px;
-    font-size: 10px;
-}
-
-.debug-log {
-    padding: 8px;
-    max-height: 250px;
-    overflow-y: auto;
-    color: #0f0;
-}
-
-.debug-log .debug-entry {
-    margin-bottom: 4px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid #333;
-}
-
-.debug-log .debug-entry:last-child {
-    border-bottom: none;
-}
-
-.debug-log .debug-time {
-    color: #888;
-}
-
-.debug-log .debug-event {
-    color: #ff0;
-}
-
-.debug-log .debug-coords {
-    color: #0ff;
-}
-
-.debug-log .debug-hit {
-    color: #0f0;
-}
-
-.debug-log .debug-miss {
-    color: #f66;
-}
-
-.debug-log .debug-info {
-    color: #aaa;
-}
-
-@media (max-width: 480px) {
-    .debug-overlay {
-        width: calc(100% - 20px);
-        left: 10px;
-        right: 10px;
-        bottom: 50px;
-        max-height: 200px;
-    }
-
-    .debug-log {
-        max-height: 150px;
-        font-size: 10px;
-    }
-}
-
-/* Toast notifications */
-.toast {
-    position: fixed;
-    bottom: 2rem;
-    left: 50%;
-    transform: translateX(-50%) translateY(100px);
-    background: var(--bg-secondary);
-    color: white;
-    padding: 0.75rem 1.5rem;
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    opacity: 0;
-    transition: all 0.3s ease;
-    z-index: 1000;
-}
-
-.toast.show {
-    transform: translateX(-50%) translateY(0);
-    opacity: 1;
-}
-
-.toast.success {
-    border-left: 4px solid var(--success);
-}
-
-.toast.error {
-    border-left: 4px solid var(--accent);
-}
-
-/* Responsive */
-@media (max-width: 600px) {
-    .container {
-        padding: 0.5rem;
-        /* Ensure container fills available space properly on all mobile browsers */
-        height: 100%;
-        height: 100dvh;
-        height: -webkit-fill-available;
-        min-height: 100%;
-        min-height: 100dvh;
-        min-height: -webkit-fill-available;
-    }
-
-    header h1 {
-        font-size: 1.2rem;
-    }
-
-    .controls {
-        flex-direction: column;
-        gap: 0.75rem;
-        padding: 0.75rem;
-        flex-shrink: 0; /* Don't shrink controls */
-    }
-
-    .button-group {
-        width: 100%;
-    }
-
-    .btn {
-        flex: 1;
-    }
-
-    /* Ensure preview section takes available space */
-    main {
-        flex: 1;
-        min-height: 0;
-        overflow: hidden;
-    }
-
-    .preview-section {
-        flex: 1;
-        min-height: 0;
-        overflow: hidden;
-    }
-
-    .preview-container {
-        flex: 1;
-        min-height: 0;
-        /* Force preview to expand */
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-
-    .preview-wrapper {
-        flex: 1;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        max-height: 100%;
-    }
-
-    /* Make image fill as much space as possible while maintaining aspect ratio */
-    #preview {
-        max-width: 100%;
-        max-height: 100%;
-        width: auto;
-        height: auto;
-        object-fit: contain;
-    }
+  }
 }
 
 /* Landscape phone optimization */
 @media (max-height: 500px) and (orientation: landscape) {
-    html, body {
-        overflow-x: hidden;
-        overflow-y: hidden;
-    }
+  html,
+  body {
+    overflow-x: hidden;
+    overflow-y: hidden;
+  }
 
-    .container {
-        flex-direction: row;
-        height: 100vh;
-        height: 100dvh; /* Dynamic viewport height - better mobile support */
-        padding: 0.5rem;
-        gap: 0.5rem;
-    }
+  .container {
+    flex-direction: row;
+    height: 100vh;
+    height: 100dvh; /* Dynamic viewport height - better mobile support */
+    padding: 0.5rem;
+    gap: 0.5rem;
+  }
 
-    /* Hide title but keep settings button */
-    header {
-        position: absolute;
-        top: 0.5rem;
-        right: 0.5rem;
-        z-index: 50;
-        padding: 0;
-        margin: 0;
-        background: transparent;
-    }
+  /* Hide title but keep settings button */
+  header {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 50;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+  }
 
-    header h1 {
-        display: none;
-    }
+  header h1 {
+    display: none;
+  }
 
-    .header-controls {
-        gap: 0.5rem;
-    }
+  .header-controls {
+    gap: 0.5rem;
+  }
 
-    .header-controls .status {
-        display: none; /* Hide status in landscape */
-    }
+  .header-controls .status {
+    display: none; /* Hide status in landscape */
+  }
 
-    /* Hide non-essential buttons in landscape header */
-    #toggle-debug,
-    #restart-service-btn {
-        display: none;
-    }
+  /* Hide non-essential buttons in landscape header */
+  #toggle-debug,
+  #restart-service-btn {
+    display: none;
+  }
 
-    main {
-        flex: 1;
-        flex-direction: row;
-        min-height: 0;
-        overflow: hidden;
-        gap: 0.5rem;
-    }
+  main {
+    flex: 1;
+    flex-direction: row;
+    min-height: 0;
+    overflow: hidden;
+    gap: 0.5rem;
+  }
 
-    .preview-section {
-        flex: 1;
-        min-height: 0;
-        height: 100%;
-        max-height: calc(100vh - 1rem);
-        max-height: calc(100dvh - 1rem);
-    }
+  .preview-section {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    max-height: calc(100vh - 1rem);
+    max-height: calc(100dvh - 1rem);
+  }
 
-    .preview-toolbar {
-        padding: 0.25rem 0.5rem;
-    }
+  .preview-toolbar {
+    padding: 0.25rem 0.5rem;
+  }
 
-    .preview-container {
-        flex: 1;
-        min-height: 0;
-        height: calc(100% - 40px); /* Account for toolbar */
-    }
+  .preview-container {
+    flex: 1;
+    min-height: 0;
+    height: calc(100% - 40px); /* Account for toolbar */
+  }
 
-    .preview-wrapper {
-        width: 100%;
-        height: 100%;
-    }
+  .preview-wrapper {
+    width: 100%;
+    height: 100%;
+  }
 
-    #preview {
-        max-width: 100%;
-        max-height: 100%;
-        width: auto;
-        height: auto;
-    }
+  #preview {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+  }
 
-    .controls {
-        flex: 0 0 auto;
-        flex-direction: column;
-        width: auto;
-        min-width: 140px;
-        max-width: 180px;
-        overflow-y: auto;
-        padding: 0.5rem;
-        gap: 0.5rem;
-    }
+  .controls {
+    flex: 0 0 auto;
+    flex-direction: column;
+    width: auto;
+    min-width: 140px;
+    max-width: 180px;
+    overflow-y: auto;
+    padding: 0.5rem;
+    gap: 0.5rem;
+  }
 
-    .control-group {
-        min-width: unset;
-    }
+  .control-group {
+    min-width: unset;
+  }
 
-    .button-group {
-        flex-direction: column;
-        width: 100%;
-    }
+  .button-group {
+    flex-direction: column;
+    width: 100%;
+  }
 
-    .btn {
-        font-size: 0.8rem;
-        padding: 0.4rem 0.6rem;
-    }
+  .btn {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.6rem;
+  }
 
-    footer {
-        display: none; /* Hide footer in landscape */
-    }
+  footer {
+    display: none; /* Hide footer in landscape */
+  }
 
-    /* Hide help text in landscape to save space */
-    .help-text {
-        display: none;
-    }
+  /* Hide help text in landscape to save space */
+  .help-text {
+    display: none;
+  }
 
-    .stats-details {
-        display: none;
-    }
+  .stats-details {
+    display: none;
+  }
 
-    /* Camera panel in landscape - side panel */
-    .camera-panel {
-        width: 280px;
-        max-width: 40vw;
-        height: 100%;
-        max-height: 100%;
-        top: 0;
-        right: 0;
-        bottom: auto;
-        border-radius: 0;
-    }
+  /* Camera panel in landscape - side panel */
+  .camera-panel {
+    width: 280px;
+    max-width: 40vw;
+    height: 100%;
+    max-height: 100%;
+    top: 0;
+    right: 0;
+    bottom: auto;
+    border-radius: 0;
+  }
 
-    .camera-panel.hidden {
-        transform: translateX(100%);
-    }
+  .camera-panel.hidden {
+    transform: translateX(100%);
+  }
 }
 
 /* Mobile portrait - ensure preview stays visible when panel open */
 @media (max-width: 600px) and (orientation: portrait) {
-    /* Use dvh for more reliable height on mobile browsers (Samsung, etc.) */
-    html, body {
-        height: 100dvh;
-        height: -webkit-fill-available; /* Fallback for older browsers */
-    }
+  /* Use dvh for more reliable height on mobile browsers (Samsung, etc.) */
+  html,
+  body {
+    height: 100dvh;
+    height: -webkit-fill-available; /* Fallback for older browsers */
+  }
 
-    .container {
-        height: 100dvh;
-        height: -webkit-fill-available;
-    }
+  .container {
+    height: 100dvh;
+    height: -webkit-fill-available;
+  }
 
-    /* Ensure preview takes most of the available space */
-    .preview-section {
-        flex: 1 1 auto;
-        min-height: 0;
-    }
+  /* Ensure preview takes most of the available space */
+  .preview-section {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
 
-    .preview-container {
-        flex: 1;
-        min-height: 0;
-    }
+  .preview-container {
+    flex: 1;
+    min-height: 0;
+  }
 
-    .preview-wrapper {
-        width: 100%;
-        height: 100%;
-    }
+  .preview-wrapper {
+    width: 100%;
+    height: 100%;
+  }
 
-    /* Let the image scale naturally within the container */
-    #preview {
-        max-width: 100%;
-        max-height: 100%;
-        width: auto;
-        height: auto;
-    }
+  /* Let the image scale naturally within the container */
+  #preview {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+  }
 
-    /* Camera panel in portrait - bottom sheet style */
-    .camera-panel {
-        position: fixed !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        height: 60vh !important;
-        height: 60dvh !important;
-        max-height: none !important;
-        top: auto !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        border-radius: 1rem 1rem 0 0 !important;
-        transform: translateY(0) !important;
-        transition: transform 0.3s ease !important;
-    }
+  /* Camera panel in portrait - bottom sheet style */
+  .camera-panel {
+    position: fixed !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 60vh !important;
+    height: 60dvh !important;
+    max-height: none !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    border-radius: 1rem 1rem 0 0 !important;
+    transform: translateY(0) !important;
+    transition: transform 0.3s ease !important;
+  }
 
-    .camera-panel.hidden {
-        transform: translateY(100%) !important;
-    }
+  .camera-panel.hidden {
+    transform: translateY(100%) !important;
+  }
 
-    /* When panel is open, ensure preview stays visible above the panel */
-    body.panel-open .container {
-        height: 45vh;
-        height: 45dvh;
-        overflow: hidden;
-    }
+  /* When panel is open, ensure preview stays visible above the panel */
+  body.panel-open .container {
+    height: 45vh;
+    height: 45dvh;
+    overflow: hidden;
+  }
 
-    body.panel-open main {
-        height: 100%;
-        max-height: calc(45vh - 60px);
-        max-height: calc(45dvh - 60px);
-        overflow: hidden;
-    }
+  body.panel-open main {
+    height: 100%;
+    max-height: calc(45vh - 60px);
+    max-height: calc(45dvh - 60px);
+    overflow: hidden;
+  }
 
-    body.panel-open .preview-section {
-        flex: 1;
-        min-height: 0;
-        max-height: 100%;
-    }
+  body.panel-open .preview-section {
+    flex: 1;
+    min-height: 0;
+    max-height: 100%;
+  }
 
-    body.panel-open .preview-container {
-        flex: 1;
-        min-height: 0;
-    }
+  body.panel-open .preview-container {
+    flex: 1;
+    min-height: 0;
+  }
 
-    body.panel-open .preview-wrapper {
-        height: 100%;
-    }
+  body.panel-open .preview-wrapper {
+    height: 100%;
+  }
 
-    body.panel-open #preview {
-        max-height: 100%;
-    }
+  body.panel-open #preview {
+    max-height: 100%;
+  }
 
-    body.panel-open footer {
-        display: none;
-    }
+  body.panel-open footer {
+    display: none;
+  }
 
-    body.panel-open .help-text {
-        display: none;
-    }
+  body.panel-open .help-text {
+    display: none;
+  }
 }
 
 /* ============================================================================
@@ -1012,282 +1016,303 @@ footer {
    ============================================================================ */
 
 .camera-panel {
-    position: fixed;
-    top: 0;
-    right: 0;
-    width: 320px;
-    max-width: 90vw;
-    height: 100%;
-    background: var(--bg-secondary);
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
-    z-index: 100;
-    display: flex;
-    flex-direction: column;
-    transform: translateX(0);
-    transition: transform 0.3s ease;
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 320px;
+  max-width: 90vw;
+  height: 100%;
+  background: var(--bg-secondary);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(0);
+  transition: transform 0.3s ease;
 }
 
 .camera-panel.hidden {
-    transform: translateX(100%);
+  transform: translateX(100%);
 }
 
 .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .panel-header h2 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
 }
 
 .panel-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1rem;
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
 }
 
 .panel-footer {
-    padding: 1rem;
-    background: var(--bg-tertiary);
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
-    display: flex;
-    gap: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  background: var(--bg-tertiary);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  gap: 0.5rem;
 }
 
 .panel-footer .btn {
-    flex: 1;
+  flex: 1;
 }
 
 /* Camera control items */
 .camera-controls-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.0rem;
 }
 
 .camera-control {
-    background: var(--bg-primary);
-    border-radius: 0.5rem;
-    padding: 0.75rem;
+  background: var(--bg-primary);
+  border-radius: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.2rem;
 }
 
 /* Grouped controls (toggle + slider in same box) */
 .control-group-separator {
-    height: 1px;
-    background: var(--bg-tertiary);
-    margin: 0.75rem 0;
+  height: 1px;
+  background: var(--bg-tertiary);
+  margin: 0.75rem 0;
 }
 
 .camera-control-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
 }
 
 .camera-control-name {
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
 }
 
 .camera-control-value {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    font-family: monospace;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-family: monospace;
+  transition: color 0.15s ease;
+}
+
+/* Visual indicator when value is at default */
+.camera-control-value.at-default {
+  color: var(--success);
+}
+
+.camera-control-value.at-default::after {
+  content: " ✓";
+  font-size: 0.7rem;
 }
 
 /* Slider controls */
 .camera-control-slider {
-    width: 100%;
-    -webkit-appearance: none;
-    appearance: none;
-    height: 6px;
-    background: var(--bg-tertiary);
-    border-radius: 3px;
-    outline: none;
-    cursor: pointer;
+  width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
 }
 
 .camera-control-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 18px;
-    height: 18px;
-    background: var(--accent);
-    border-radius: 50%;
-    cursor: pointer;
-    transition: background 0.2s;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.2s;
 }
 
 .camera-control-slider::-webkit-slider-thumb:hover {
-    background: var(--accent-hover);
+  background: var(--accent-hover);
 }
 
 .camera-control-slider::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
-    background: var(--accent);
-    border-radius: 50%;
-    cursor: pointer;
-    border: none;
-    transition: background 0.2s;
+  width: 18px;
+  height: 18px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  transition: background 0.2s;
 }
 
 .camera-control-slider::-moz-range-thumb:hover {
-    background: var(--accent-hover);
+  background: var(--accent-hover);
 }
 
 /* Toggle controls for boolean */
 .camera-control-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 /* Select/menu controls */
 .camera-control-select {
-    width: 100%;
-    padding: 0.5rem;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 0.375rem;
-    font-size: 0.9rem;
-    cursor: pointer;
-    outline: none;
+  width: 100%;
+  padding: 0.5rem;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.375rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  outline: none;
 }
 
 .camera-control-select:focus {
-    border-color: var(--accent);
+  border-color: var(--accent);
 }
 
 .camera-control-select option {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 /* Control metadata */
 .camera-control-meta {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 0.25rem;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 /* Messages */
 .loading-message,
 .unavailable-message {
-    text-align: center;
-    padding: 2rem;
-    color: var(--text-secondary);
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
 }
 
 .unavailable-message .hint {
-    font-size: 0.85rem;
-    margin-top: 0.5rem;
-    opacity: 0.7;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  opacity: 0.7;
 }
 
 /* Icon buttons */
 .btn-icon {
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.1rem;
-    background: var(--bg-tertiary);
-    border: none;
-    border-radius: 0.375rem;
-    cursor: pointer;
-    transition: all 0.2s;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  background: var(--bg-tertiary);
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .btn-icon:hover {
-    background: var(--bg-primary);
+  background: var(--bg-primary);
 }
 
 .btn-small {
-    padding: 0.35rem 0.75rem;
-    font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
 }
 
 .btn-icon.btn-small {
-    width: 28px;
-    height: 28px;
-    font-size: 0.9rem;
+  width: 28px;
+  height: 28px;
+  font-size: 0.9rem;
 }
 
 /* Utility classes */
 .hidden {
-    display: none !important;
+  display: none !important;
 }
 
 /* Control categories */
 .control-category {
-    margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .control-category-title {
-    font-size: 0.8rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary);
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 0.2rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.video-settings-container .camera-control {
+  padding-bottom: 0.5rem;
+}
+
+div#video-settings-content div.camera-control {
+  padding-bottom: 0.5rem;
 }
 
 /* Video settings pending notice */
 .pending-notice {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
-    padding: 0.5rem 0.75rem;
-    background: rgba(255, 193, 7, 0.15);
-    border: 1px solid var(--warning);
-    border-radius: 0.375rem;
-    color: var(--warning);
-    font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid var(--warning);
+  border-radius: 0.375rem;
+  color: var(--warning);
+  font-size: 0.85rem;
 }
 
 .pending-notice .pending-icon {
-    font-size: 1rem;
+  font-size: 1rem;
 }
 
 .pending-notice .pending-text {
-    flex: 1;
+  flex: 1;
 }
 
 .btn-full {
-    width: 100%;
+  width: 100%;
 }
 
 /* Inactive control styling */
 .camera-control.inactive {
-    opacity: 0.5;
+  opacity: 0.5;
 }
 
 .camera-control.inactive .camera-control-slider:disabled,
 .camera-control.inactive .camera-control-select:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .camera-control .camera-control-slider:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* ============================================================================
@@ -1295,103 +1320,103 @@ footer {
    ============================================================================ */
 
 .mobile-point-menu {
-    position: fixed;
-    bottom: 20%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg-secondary);
-    border-radius: 1rem;
-    padding: 0.5rem;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    z-index: 200;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    min-width: 200px;
-    animation: slideUp 0.2s ease;
+  position: fixed;
+  bottom: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border-radius: 1rem;
+  padding: 0.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 200px;
+  animation: slideUp 0.2s ease;
 }
 
 @keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateX(-50%) translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
-    }
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 .mobile-menu-btn {
-    padding: 1rem 1.5rem;
-    border: none;
-    border-radius: 0.5rem;
-    font-size: 1rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    background: var(--bg-primary);
-    color: var(--text-primary);
+  padding: 1rem 1.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .mobile-menu-btn:hover,
 .mobile-menu-btn:active {
-    background: var(--bg-tertiary);
+  background: var(--bg-tertiary);
 }
 
 .mobile-menu-btn.add-btn {
-    background: var(--success);
-    color: var(--bg-primary);
+  background: var(--success);
+  color: var(--bg-primary);
 }
 
 .mobile-menu-btn.add-btn:hover,
 .mobile-menu-btn.add-btn:active {
-    background: #3db88a;
+  background: #3db88a;
 }
 
 .mobile-menu-btn.remove-btn {
-    background: var(--accent);
-    color: white;
+  background: var(--accent);
+  color: white;
 }
 
 .mobile-menu-btn.remove-btn:hover,
 .mobile-menu-btn.remove-btn:active {
-    background: var(--accent-hover);
+  background: var(--accent-hover);
 }
 
 /* Larger touch targets for calibration points on mobile */
 @media (pointer: coarse) {
-    .calibration-point circle {
-        r: 16;
-    }
+  .calibration-point circle {
+    r: 16;
+  }
 
-    .calibration-point.corner circle {
-        r: 18;
-    }
+  .calibration-point.corner circle {
+    r: 18;
+  }
 
-    .calibration-point:hover circle,
-    .calibration-point.dragging circle {
-        r: 22;
-    }
+  .calibration-point:hover circle,
+  .calibration-point.dragging circle {
+    r: 22;
+  }
 
-    .calibration-overlay .grid-lines .edge-segment {
-        stroke-width: 40;
-    }
+  .calibration-overlay .grid-lines .edge-segment {
+    stroke-width: 40;
+  }
 }
 
 /* Mobile-specific help text */
 .help-text-mobile {
-    display: none;
+  display: none;
 }
 
 @media (pointer: coarse) {
-    .help-text-desktop {
-        display: none;
-    }
+  .help-text-desktop {
+    display: none;
+  }
 
-    .help-text-mobile {
-        display: block;
-    }
+  .help-text-mobile {
+    display: block;
+  }
 }
 
 /* ============================================================================
@@ -1401,91 +1426,91 @@ footer {
 
 /* Force preview to use available space on all mobile browsers */
 @media screen and (max-width: 768px) {
-    /* Ensure proper stacking context */
-    .preview-section {
-        position: relative;
-        flex: 1 1 0%;
-        min-height: 0;
-    }
+  /* Ensure proper stacking context */
+  .preview-section {
+    position: relative;
+    flex: 1 1 0%;
+    min-height: 0;
+  }
 
-    .preview-container {
-        position: relative;
-        flex: 1 1 0%;
-        min-height: 0;
-    }
+  .preview-container {
+    position: relative;
+    flex: 1 1 0%;
+    min-height: 0;
+  }
 
-    .preview-wrapper {
-        position: relative;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
+  .preview-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
 
-    /* Ensure the image can grow to fill space */
-    #preview {
-        display: block;
-        max-width: 100%;
-        max-height: 100%;
-        width: auto;
-        height: auto;
-        object-fit: contain;
-    }
+  /* Ensure the image can grow to fill space */
+  #preview {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+  }
 }
 
 /* High specificity fix for Samsung Browser viewport issues in portrait */
 @media screen and (max-width: 600px) and (orientation: portrait) {
-    html {
-        height: 100%;
-        height: 100vh;
-        height: 100dvh;
-        height: -webkit-fill-available;
-    }
+  html {
+    height: 100%;
+    height: 100vh;
+    height: 100dvh;
+    height: -webkit-fill-available;
+  }
 
-    body {
-        height: 100%;
-        height: 100vh;
-        height: 100dvh;
-        height: -webkit-fill-available;
-        min-height: 100%;
-        min-height: 100vh;
-        min-height: 100dvh;
-        min-height: -webkit-fill-available;
-    }
+  body {
+    height: 100%;
+    height: 100vh;
+    height: 100dvh;
+    height: -webkit-fill-available;
+    min-height: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
+  }
 
-    .container {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        height: 100vh;
-        height: 100dvh;
-        height: -webkit-fill-available;
-    }
+  .container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    height: 100vh;
+    height: 100dvh;
+    height: -webkit-fill-available;
+  }
 
-    main {
-        flex: 1 1 auto;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        overflow: hidden;
-    }
+  main {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
 
-    .preview-section {
-        flex: 1 1 auto;
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        overflow: hidden;
-    }
+  .preview-section {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
 
-    .preview-toolbar {
-        flex: 0 0 auto;
-    }
+  .preview-toolbar {
+    flex: 0 0 auto;
+  }
 
-    .preview-container {
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow: hidden;
-    }
+  .preview-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
 }
