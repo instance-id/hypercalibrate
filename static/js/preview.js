@@ -26,21 +26,41 @@ export class PreviewManager {
 
         // Sync overlay when image loads
         this.previewElement?.addEventListener('load', () => {
-            this.syncOverlaySize();
+            // Use requestAnimationFrame to ensure layout is complete
+            requestAnimationFrame(() => {
+                this.syncOverlaySize();
+            });
         });
 
-        // Sync on window resize
+        // Sync on window resize with debounce
+        let resizeTimeout;
         window.addEventListener('resize', () => {
-            this.syncOverlaySize();
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                this.syncOverlaySize();
+            }, 50);
+        });
+
+        // Sync on orientation change (important for mobile)
+        window.addEventListener('orientationchange', () => {
+            // Delay to let browser complete layout after orientation change
+            setTimeout(() => {
+                this.syncOverlaySize();
+            }, 200);
         });
 
         // Use ResizeObserver for more robust overlay syncing
         if (typeof ResizeObserver !== 'undefined') {
             const resizeObserver = new ResizeObserver(() => {
-                this.syncOverlaySize();
+                requestAnimationFrame(() => {
+                    this.syncOverlaySize();
+                });
             });
             if (this.previewWrapper) {
                 resizeObserver.observe(this.previewWrapper);
+            }
+            if (this.previewElement) {
+                resizeObserver.observe(this.previewElement);
             }
         }
     }
