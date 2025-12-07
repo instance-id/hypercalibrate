@@ -1097,10 +1097,73 @@ footer {
   margin-bottom: 0.5rem;
 }
 
+.camera-control-name-wrapper {
+  display: inline-flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
 .camera-control-name {
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-primary);
+}
+
+/* Info button for control descriptions */
+.control-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 0.35rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s, color 0.2s;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.control-info-btn:hover,
+.control-info-btn.active {
+  opacity: 1;
+  color: var(--accent);
+}
+
+/* Control description panel - appended to .camera-control */
+.control-description {
+  display: none;
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--accent);
+  animation: slideDown 0.15s ease;
+}
+
+.control-description.show {
+  display: block;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .camera-control-value {
@@ -1108,6 +1171,7 @@ footer {
   color: var(--text-secondary);
   font-family: monospace;
   transition: color 0.15s ease;
+  flex-shrink: 0;
 }
 
 /* Visual indicator when value is at default */

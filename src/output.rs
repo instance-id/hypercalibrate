@@ -101,6 +101,8 @@ struct v4l2_pix_format {
 #[repr(C)]
 struct v4l2_format {
     type_: u32,
+    // 4 bytes padding to align the union to 8-byte boundary (matching kernel struct)
+    _pad_before_fmt: u32,
     // Union - pix_format is the largest at 48 bytes, pad to 200 bytes total for union
     fmt: v4l2_pix_format,
     _pad: [u8; 200 - std::mem::size_of::<v4l2_pix_format>()],
@@ -209,6 +211,7 @@ impl VirtualCamera {
 
         let mut v4l2_fmt = v4l2_format {
             type_: V4L2_BUF_TYPE_VIDEO_OUTPUT,
+            _pad_before_fmt: 0,
             fmt: v4l2_pix_format {
                 width: self.width,
                 height: self.height,

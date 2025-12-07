@@ -13,11 +13,52 @@ export class CameraManager {
         this.panelElement = null;
 
         // Control dependencies (e.g., white_balance_temperature depends on auto_white_balance being off)
+        // For menu-type controls like auto_exposure, use 'activeWhenValue' to specify the exact value(s)
+        // that enable the dependent control (e.g., auto_exposure=1 means Manual Mode)
         this.controlDependencies = {
             'white_balance_temperature': { dependsOn: 'white_balance_automatic', activeWhen: false },
-            'exposure_time_absolute': { dependsOn: 'auto_exposure', activeWhen: false },
+            'exposure_time_absolute': { dependsOn: 'auto_exposure', activeWhenValues: [1] }, // 1 = Manual Mode
             'focus_absolute': { dependsOn: 'focus_automatic_continuous', activeWhen: false },
             'gain': { dependsOn: 'autogain', activeWhen: false }
+        };
+
+        // Control descriptions for tooltips/help
+        this.controlDescriptions = {
+            // Brightness & Exposure
+            'brightness': 'Adjusts overall image brightness. Higher values make the image lighter, lower values make it darker.',
+            'contrast': 'Controls the difference between light and dark areas. Higher contrast makes colors more vivid but may lose detail in shadows/highlights.',
+            'saturation': 'Adjusts color intensity. Higher values make colors more vivid, lower values move toward grayscale.',
+            'hue': 'Shifts all colors around the color wheel. Useful for correcting color casts.',
+            'gamma': 'Adjusts midtone brightness without affecting pure blacks or whites. Higher gamma lightens midtones.',
+            'sharpness': 'Enhances edge definition. Too high can introduce artifacts; too low makes the image soft.',
+            'backlight_compensation': 'Helps expose subjects properly when there\'s bright light behind them.',
+
+            // Exposure controls
+            'exposure_time_absolute': 'How long the sensor captures light per frame (in 100µs units). Longer = brighter but more motion blur.',
+            'auto_exposure': 'Lets the camera automatically adjust exposure. Manual mode gives you direct control.',
+            'exposure_dynamic_framerate': 'Allows the camera to reduce framerate in low light for better exposure.',
+            'gain': 'Amplifies the sensor signal. Higher gain = brighter image but more noise/grain.',
+            'autogain': 'Automatically adjusts gain based on scene brightness.',
+
+            // White Balance
+            'white_balance_temperature': 'Color temperature in Kelvin. Lower (2000-4000K) = warmer/orange, Higher (5500-8000K) = cooler/blue.',
+            'white_balance_automatic': 'Automatically adjusts white balance to neutralize color casts from different light sources.',
+
+            // Focus
+            'focus_absolute': 'Manual focus distance. Lower values focus closer, higher values focus farther away.',
+            'focus_automatic_continuous': 'Continuously adjusts focus to keep subjects sharp. Disable for manual focus control.',
+
+            // Pan/Tilt/Zoom
+            'pan_absolute': 'Moves the camera view horizontally (left/right). Useful for framing without moving the camera.',
+            'tilt_absolute': 'Moves the camera view vertically (up/down). Useful for framing without moving the camera.',
+            'zoom_absolute': 'Digital or optical zoom level. Higher values zoom in, showing a smaller area with more detail.',
+
+            // Power line frequency
+            'power_line_frequency': 'Matches your local power frequency (50Hz/60Hz) to prevent flickering under artificial lights.',
+
+            // Other common controls
+            'led1_mode': 'Controls the camera\'s LED indicator behavior.',
+            'led1_frequency': 'Sets the blink rate of the camera LED when in blinking mode.'
         };
     }
 
@@ -26,6 +67,24 @@ export class CameraManager {
      */
     init(panelElement) {
         this.panelElement = panelElement;
+
+        // Close descriptions when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.control-info-btn') && !e.target.closest('.control-description')) {
+                this.closeAllDescriptions();
+            }
+        });
+    }
+
+    /**
+     * Close all open control descriptions
+     */
+    closeAllDescriptions() {
+        document.querySelectorAll('.control-description.show').forEach(d => {
+            d.classList.remove('show');
+            d.remove();
+        });
+        document.querySelectorAll('.control-info-btn.active').forEach(b => b.classList.remove('active'));
     }
 
     /**
@@ -179,15 +238,13 @@ export class CameraManager {
             el.classList.add('inactive');
         }
 
-        // Render grouped toggle first
+        // Render grouped toggle/menu first (e.g., auto_exposure above exposure_time)
         if (groupedToggle) {
             const toggleHeader = document.createElement('div');
             toggleHeader.className = 'camera-control-header';
 
-            const toggleNameEl = document.createElement('span');
-            toggleNameEl.className = 'camera-control-name';
-            toggleNameEl.textContent = formatControlName(groupedToggle.name);
-            toggleHeader.appendChild(toggleNameEl);
+            const toggleNameWrapper = this.createNameWithInfo(groupedToggle);
+            toggleHeader.appendChild(toggleNameWrapper);
 
             const toggleValueEl = document.createElement('span');
             toggleValueEl.className = 'camera-control-value';
@@ -195,7 +252,13 @@ export class CameraManager {
             toggleHeader.appendChild(toggleValueEl);
 
             el.appendChild(toggleHeader);
-            el.appendChild(this.createBooleanControl(groupedToggle, toggleValueEl));
+            
+            // Render based on actual control type (menu vs boolean)
+            if (groupedToggle.type === 'menu' || groupedToggle.type === 'integermenu') {
+                el.appendChild(this.createMenuControl(groupedToggle, toggleValueEl));
+            } else {
+                el.appendChild(this.createBooleanControl(groupedToggle, toggleValueEl));
+            }
 
             const separator = document.createElement('div');
             separator.className = 'control-group-separator';
@@ -205,10 +268,8 @@ export class CameraManager {
         const header = document.createElement('div');
         header.className = 'camera-control-header';
 
-        const nameEl = document.createElement('span');
-        nameEl.className = 'camera-control-name';
-        nameEl.textContent = formatControlName(control.name);
-        header.appendChild(nameEl);
+        const nameWrapper = this.createNameWithInfo(control);
+        header.appendChild(nameWrapper);
 
         const valueEl = document.createElement('span');
         valueEl.className = 'camera-control-value';
@@ -231,6 +292,75 @@ export class CameraManager {
         }
 
         return el;
+    }
+
+    /**
+     * Create control name with info button
+     */
+    createNameWithInfo(control) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'camera-control-name-wrapper';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'camera-control-name';
+        nameEl.textContent = formatControlName(control.name);
+        wrapper.appendChild(nameEl);
+
+        const controlName = normalizeControlName(control.name);
+        const description = this.controlDescriptions[controlName];
+
+        if (description) {
+            const infoBtn = document.createElement('button');
+            infoBtn.className = 'control-info-btn';
+            infoBtn.innerHTML = 'ⓘ';
+            infoBtn.type = 'button';
+            infoBtn.setAttribute('aria-label', 'Show help for ' + formatControlName(control.name));
+            infoBtn.dataset.description = description;
+
+            infoBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDescription(infoBtn);
+            });
+
+            wrapper.appendChild(infoBtn);
+        }
+
+        return wrapper;
+    }
+
+    /**
+     * Toggle description panel for a control
+     */
+    toggleDescription(infoBtn) {
+        const controlEl = infoBtn.closest('.camera-control');
+        let descPanel = controlEl.querySelector('.control-description');
+
+        // Close any other open descriptions first
+        document.querySelectorAll('.control-description.show').forEach(d => {
+            if (d !== descPanel) {
+                d.classList.remove('show');
+                d.remove();
+            }
+        });
+        document.querySelectorAll('.control-info-btn.active').forEach(b => {
+            if (b !== infoBtn) b.classList.remove('active');
+        });
+
+        if (descPanel) {
+            // Already exists, toggle it
+            descPanel.classList.toggle('show');
+            infoBtn.classList.toggle('active');
+            if (!descPanel.classList.contains('show')) {
+                descPanel.remove();
+            }
+        } else {
+            // Create and show
+            descPanel = document.createElement('div');
+            descPanel.className = 'control-description show';
+            descPanel.textContent = infoBtn.dataset.description;
+            controlEl.appendChild(descPanel);
+            infoBtn.classList.add('active');
+        }
     }
 
     /**
@@ -262,9 +392,7 @@ export class CameraManager {
                 c => normalizeControlName(c.name) === dependency.dependsOn
             );
             if (parentControl) {
-                const parentValue = this.getControlValue(parentControl);
-                const parentBoolValue = parentValue === true || parentValue === 1;
-                slider.disabled = (parentBoolValue !== dependency.activeWhen);
+                slider.disabled = !this.isDependencyMet(dependency, this.getControlValue(parentControl));
             }
         }
 
@@ -352,6 +480,7 @@ export class CameraManager {
     createMenuControl(control, valueEl) {
         const select = document.createElement('select');
         select.className = 'camera-control-select';
+        select.dataset.controlName = normalizeControlName(control.name);
 
         if (control.menu_items) {
             for (const item of control.menu_items) {
@@ -370,8 +499,11 @@ export class CameraManager {
 
         select.addEventListener('change', (e) => {
             const selectedOpt = e.target.options[e.target.selectedIndex];
-            valueEl.textContent = selectedOpt ? selectedOpt.textContent : e.target.value;
-            this.setControl(control.id, parseInt(e.target.value));
+            const newValue = parseInt(e.target.value);
+            valueEl.textContent = selectedOpt ? selectedOpt.textContent : newValue;
+            const controlName = normalizeControlName(control.name);
+            this.updateDependentControls(controlName, newValue);
+            this.setControl(control.id, newValue);
         });
 
         return select;
@@ -393,12 +525,26 @@ export class CameraManager {
     }
 
     /**
+     * Check if a dependency condition is met
+     * Supports both boolean-style (activeWhen: true/false) and menu-style (activeWhenValues: [1, 2])
+     */
+    isDependencyMet(dependency, parentValue) {
+        // For menu-type controls with specific active values (e.g., auto_exposure = 1 for manual)
+        if (dependency.activeWhenValues !== undefined) {
+            return dependency.activeWhenValues.includes(parentValue);
+        }
+        // For boolean-type controls
+        const parentBoolValue = parentValue === true || parentValue === 1;
+        return parentBoolValue === dependency.activeWhen;
+    }
+
+    /**
      * Update dependent controls based on parent toggle
      */
     updateDependentControls(controlName, value) {
         for (const [dependentName, dependency] of Object.entries(this.controlDependencies)) {
             if (dependency.dependsOn === controlName) {
-                const shouldBeActive = (value === dependency.activeWhen);
+                const shouldBeActive = this.isDependencyMet(dependency, value);
                 const slider = document.querySelector(`.camera-control-slider[data-control-name="${dependentName}"]`);
 
                 if (slider) {
@@ -484,9 +630,7 @@ export class CameraManager {
                 c => normalizeControlName(c.name) === dependency.dependsOn
             );
             if (parentControl) {
-                const parentValue = this.getControlValue(parentControl);
-                const parentBoolValue = parentValue === true || parentValue === 1;
-                shouldBeDisabled = (parentBoolValue !== dependency.activeWhen);
+                shouldBeDisabled = !this.isDependencyMet(dependency, this.getControlValue(parentControl));
             }
         } else {
             shouldBeDisabled = control.flags.inactive;

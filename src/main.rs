@@ -135,11 +135,34 @@ async fn main() -> Result<()> {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             if restart_state.restart_requested.load(Ordering::SeqCst) {
-                info!("Restart requested, initiating service restart...");
+                info!("Restart requested, initiating coordinated service restart...");
                 // Give the API response time to complete
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                // Exit with code 0 - systemd will restart us
-                std::process::exit(0);
+
+                // Trigger the oneshot systemd service to handle the coordinated restart
+                // This service is independent of hypercalibrate and will:
+                // 1. Stop Hyperion (releases /dev/video10)
+                // 2. Stop HyperCalibrate
+                // 3. Start HyperCalibrate (reconfigures v4l2loopback)
+                // 4. Start Hyperion
+                info!("Triggering coordinated restart via systemd oneshot service...");
+                match std::process::Command::new("systemctl")
+                    .args(["start", "--no-block", "hypercalibrate-restart.service"])
+                    .spawn()
+                {
+                    Ok(_) => {
+                        info!("Restart service triggered, exiting...");
+                        // Give systemd a moment to register the start request
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        // Exit cleanly - the oneshot service will restart us
+                        std::process::exit(0);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to trigger restart service: {}", e);
+                        // Fall back to simple exit
+                        std::process::exit(0);
+                    }
+                }
             }
         }
     });

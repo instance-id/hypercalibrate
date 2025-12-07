@@ -91,6 +91,18 @@ else
     echo "⚠️  Warning: setup-v4l2loopback.sh not found, using inline commands"
 fi
 
+# Install coordinated restart script (handles Hyperion restart order)
+RESTART_SCRIPT="./scripts/restart-with-hyperion.sh"
+if [ ! -f "$RESTART_SCRIPT" ]; then
+    RESTART_SCRIPT="./restart-with-hyperion.sh"
+fi
+if [ -f "$RESTART_SCRIPT" ]; then
+    sudo install -m 755 "$RESTART_SCRIPT" /usr/local/bin/hypercalibrate-restart
+    echo "   Installed coordinated restart script"
+else
+    echo "⚠️  Warning: restart-with-hyperion.sh not found"
+fi
+
 # Create config directory and config file
 echo "📁 Setting up configuration..."
 sudo mkdir -p /etc/hypercalibrate
@@ -136,14 +148,14 @@ edge_points = []
 TOML_CONFIG
 
 # Create systemd service
-# NOTE: Service starts AFTER Hyperion to prevent v4l2loopback from crashing Hyperion
+# NOTE: hypercalibrate starts BEFORE Hyperion so /dev/video10 exists when Hyperion starts
 # The setup script reads resolution from config.toml, so changes via web UI are applied on restart
 echo "⚙️  Creating systemd service..."
 sudo tee /etc/systemd/system/hypercalibrate.service > /dev/null << SERVICE_FILE
 [Unit]
 Description=HyperCalibrate - TV Screen Calibration for Hyperion
-After=network.target hyperion@hyperion.service
-Wants=hyperion@hyperion.service
+After=network.target
+Before=hyperion@hyperion.service hyperiond.service hyperion.service
 
 [Service]
 Type=simple
@@ -151,7 +163,9 @@ User=root
 # Setup script reads resolution from config.toml and configures v4l2loopback
 ExecStartPre=/usr/local/bin/hypercalibrate-setup-v4l2loopback /etc/hypercalibrate/config.toml
 ExecStart=/usr/local/bin/hypercalibrate --config /etc/hypercalibrate/config.toml
-Restart=always
+# Use coordinated restart script instead of simple restart
+ExecReload=/usr/local/bin/hypercalibrate-restart
+Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
