@@ -95,6 +95,10 @@ pub struct AppState {
     pending_video_settings: RwLock<PendingVideoSettings>,
     /// Flag to signal a restart is requested
     pub restart_requested: AtomicBool,
+    /// Flag to signal camera should be released (stops capture loop)
+    pub camera_release_requested: AtomicBool,
+    /// Flag indicating camera is currently released
+    pub camera_released: AtomicBool,
 }
 
 impl AppState {
@@ -125,6 +129,8 @@ impl AppState {
             stats,
             pending_video_settings: RwLock::new(PendingVideoSettings::default()),
             restart_requested: AtomicBool::new(false),
+            camera_release_requested: AtomicBool::new(false),
+            camera_released: AtomicBool::new(false),
         }
     }
 
@@ -365,6 +371,41 @@ impl AppState {
     pub fn is_restart_requested(&self) -> bool {
         self.restart_requested.load(Ordering::SeqCst)
     }
+
+    /// Request camera release (stops capture loop, frees /dev/video0)
+    pub fn request_camera_release(&self) {
+        tracing::info!("Camera release requested via API");
+        self.camera_release_requested.store(true, Ordering::SeqCst);
+    }
+
+    /// Check if camera release was requested
+    pub fn is_camera_release_requested(&self) -> bool {
+        self.camera_release_requested.load(Ordering::SeqCst)
+    }
+
+    /// Mark camera as released (called by capture loop when it exits)
+    pub fn set_camera_released(&self, released: bool) {
+        self.camera_released.store(released, Ordering::SeqCst);
+        if released {
+            // Clear camera controls since device is no longer open
+            *self.camera_controls.write() = None;
+        }
+    }
+
+    /// Check if camera is currently released
+    pub fn is_camera_released(&self) -> bool {
+        self.camera_released.load(Ordering::SeqCst)
+    }
+
+    /// Request camera re-acquisition (triggers restart to re-open camera)
+    pub fn request_camera_acquire(&self) {
+        tracing::info!("Camera acquire requested via API - triggering restart");
+        // Clear the release flags
+        self.camera_release_requested.store(false, Ordering::SeqCst);
+        self.camera_released.store(false, Ordering::SeqCst);
+        // Trigger a restart to re-open the camera
+        self.request_restart();
+    }
 }
 
 /// Encode RGB data to JPEG
@@ -414,6 +455,10 @@ pub async fn run_server(addr: &str, state: Arc<AppState>) -> Result<()> {
         .route("/api/video/settings", get(get_video_settings))
         .route("/api/video/settings", post(set_video_settings))
         .route("/api/system/restart", post(request_system_restart))
+        // Camera device release/acquire
+        .route("/api/camera/status", get(get_camera_status))
+        .route("/api/camera/release", post(release_camera))
+        .route("/api/camera/acquire", post(acquire_camera))
         // Preview streams
         .route("/api/preview", get(get_preview))
         .route("/api/preview/raw", get(get_raw_preview))
@@ -790,6 +835,78 @@ async fn refresh_camera_controls(State(state): State<Arc<AppState>>) -> impl Int
         Ok(_) => StatusCode::OK.into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
+}
+
+// ============================================================================
+// Camera Device Release/Acquire API
+// ============================================================================
+
+/// Camera status response
+#[derive(Serialize)]
+struct CameraStatusResponse {
+    /// Whether the camera device is currently released (not in use)
+    released: bool,
+    /// Whether a release has been requested but not yet completed
+    release_pending: bool,
+    /// Input device path
+    input_device: String,
+    /// Human-readable status message
+    message: String,
+}
+
+/// Get camera device status
+async fn get_camera_status(State(state): State<Arc<AppState>>) -> Json<CameraStatusResponse> {
+    let released = state.is_camera_released();
+    let release_pending = state.is_camera_release_requested() && !released;
+
+    let message = if released {
+        "Camera released - device is available for other applications".to_string()
+    } else if release_pending {
+        "Camera release pending - waiting for capture loop to stop".to_string()
+    } else {
+        "Camera active - capturing video".to_string()
+    };
+
+    Json(CameraStatusResponse {
+        released,
+        release_pending,
+        input_device: state.input_device.clone(),
+        message,
+    })
+}
+
+/// Release the camera device (stops capture, frees /dev/video0)
+async fn release_camera(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    if state.is_camera_released() {
+        return Json(serde_json::json!({
+            "success": true,
+            "message": "Camera is already released"
+        })).into_response();
+    }
+
+    state.request_camera_release();
+
+    Json(serde_json::json!({
+        "success": true,
+        "message": "Camera release requested. The capture loop will stop shortly and free the device."
+    })).into_response()
+}
+
+/// Re-acquire the camera device (triggers restart to re-open camera)
+async fn acquire_camera(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    if !state.is_camera_released() && !state.is_camera_release_requested() {
+        return Json(serde_json::json!({
+            "success": true,
+            "message": "Camera is already active"
+        })).into_response();
+    }
+
+    state.request_camera_acquire();
+
+    Json(serde_json::json!({
+        "success": true,
+        "message": "Camera acquire requested. The service will restart to re-open the camera device."
+    })).into_response()
 }
 
 // ============================================================================

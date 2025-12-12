@@ -139,28 +139,43 @@ async fn main() -> Result<()> {
                 // Give the API response time to complete
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-                // Trigger the oneshot systemd service to handle the coordinated restart
-                // This service is independent of hypercalibrate and will:
-                // 1. Stop Hyperion (releases /dev/video10)
-                // 2. Stop HyperCalibrate
-                // 3. Start HyperCalibrate (reconfigures v4l2loopback)
-                // 4. Start Hyperion
-                info!("Triggering coordinated restart via systemd oneshot service...");
-                match std::process::Command::new("systemctl")
-                    .args(["start", "--no-block", "hypercalibrate-restart.service"])
-                    .spawn()
-                {
-                    Ok(_) => {
-                        info!("Restart service triggered, exiting...");
-                        // Give systemd a moment to register the start request
-                        std::thread::sleep(std::time::Duration::from_millis(100));
-                        // Exit cleanly - the oneshot service will restart us
-                        std::process::exit(0);
+                // Check if we're running in dev mode or under systemd
+                // HYPERCALIBRATE_DEV=1 is set by dev.sh for local development
+                let is_dev_mode = std::env::var("HYPERCALIBRATE_DEV").is_ok();
+
+                if is_dev_mode {
+                    // Dev mode: Create a signal file for dev.sh to detect
+                    info!("Dev mode detected, creating restart signal file...");
+                    let signal_path = "/tmp/hypercalibrate-restart-signal";
+                    if let Err(e) = std::fs::write(signal_path, "restart") {
+                        tracing::error!("Failed to create restart signal file: {}", e);
                     }
-                    Err(e) => {
-                        tracing::error!("Failed to trigger restart service: {}", e);
-                        // Fall back to simple exit
-                        std::process::exit(0);
+                    // Exit cleanly - dev.sh will restart us
+                    std::process::exit(0);
+                } else {
+                    // Production: Trigger the oneshot systemd service to handle the coordinated restart
+                    // This service is independent of hypercalibrate and will:
+                    // 1. Stop Hyperion (releases /dev/video10)
+                    // 2. Stop HyperCalibrate
+                    // 3. Start HyperCalibrate (reconfigures v4l2loopback)
+                    // 4. Start Hyperion
+                    info!("Triggering coordinated restart via systemd oneshot service...");
+                    match std::process::Command::new("systemctl")
+                        .args(["start", "--no-block", "hypercalibrate-restart.service"])
+                        .spawn()
+                    {
+                        Ok(_) => {
+                            info!("Restart service triggered, exiting...");
+                            // Give systemd a moment to register the start request
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                            // Exit cleanly - the oneshot service will restart us
+                            std::process::exit(0);
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to trigger restart service: {}", e);
+                            // Fall back to simple exit
+                            std::process::exit(0);
+                        }
                     }
                 }
             }

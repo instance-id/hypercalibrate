@@ -553,9 +553,27 @@ StandardOutput=journal
 StandardError=journal
 RESTART_SERVICE
 
+# Create systemd drop-ins for Hyperion services to ensure proper cold boot ordering
+# This makes Hyperion REQUIRE and WAIT for hypercalibrate during boot
+echo "⚙️  Creating Hyperion service drop-ins for boot ordering..."
+for hyperion_service in "hyperion@hyperion.service" "hyperiond.service" "hyperion.service"; do
+    service_dir="/etc/systemd/system/\${hyperion_service}.d"
+    if systemctl list-unit-files | grep -q "\${hyperion_service%%.service*}"; then
+        mkdir -p "\$service_dir"
+        cat > "\$service_dir/wait-for-hypercalibrate.conf" << 'HYPERION_DROPIN'
+[Unit]
+# Ensure Hyperion waits for HyperCalibrate to be ready during cold boot
+# This prevents race conditions where Hyperion starts before video is available
+Requires=hypercalibrate.service
+After=hypercalibrate.service
+HYPERION_DROPIN
+        echo "   Created drop-in for \$hyperion_service"
+    fi
+done
+
 # Create systemd service
 # NOTE: hypercalibrate starts BEFORE Hyperion so /dev/video10 exists when Hyperion starts
-# Hyperion's service has PartOf/BindsTo to coordinate with hypercalibrate
+# The drop-ins above ensure Hyperion waits for hypercalibrate during cold boot
 echo "⚙️  Creating systemd service..."
 cat > /etc/systemd/system/hypercalibrate.service << 'SERVICE_FILE'
 [Unit]
@@ -568,6 +586,9 @@ Type=simple
 User=root
 ExecStartPre=/usr/local/bin/hypercalibrate-setup /etc/hypercalibrate/config.toml
 ExecStart=/usr/local/bin/hypercalibrate --config /etc/hypercalibrate/config.toml
+# Give hypercalibrate time to start outputting video before systemd considers it ready
+# This ensures Hyperion doesn't start until video frames are flowing
+ExecStartPost=/bin/sleep 3
 # Use coordinated restart script instead of simple restart
 ExecReload=/usr/local/bin/hypercalibrate-restart
 Restart=on-failure
