@@ -137,6 +137,10 @@ class HyperCalibrate {
             this.camera.refresh();
         });
 
+        document.getElementById('release-camera-btn')?.addEventListener('click', () => {
+            this.camera.toggleCameraRelease();
+        });
+
         // Video settings controls
         document.getElementById('resolution-select')?.addEventListener('change', (e) => {
             this.video.onResolutionChange(e.target.value);

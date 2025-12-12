@@ -354,6 +354,24 @@ main {
   background: var(--bg-primary);
 }
 
+.btn-warning {
+  background: var(--warning);
+  color: var(--bg-primary);
+}
+
+.btn-warning:hover {
+  background: #e0a800;
+}
+
+.btn-warning.camera-released {
+  background: var(--success);
+  color: var(--bg-primary);
+}
+
+.btn-warning.camera-released:hover {
+  background: #3db88a;
+}
+
 .btn-danger {
   background: #dc3545;
   color: white;

@@ -320,7 +320,7 @@ mod tests {
     fn test_default_calibration() {
         let cal = Calibration::default();
         assert_eq!(cal.corners.len(), 4);
-        assert_eq!(cal.edge_midpoints.len(), 8);
+        assert_eq!(cal.edge_points.len(), 0); // No edge points by default
         assert!(cal.enabled);
     }
 }

@@ -130,6 +130,25 @@ pub fn run_pipeline(
     }
 
     loop {
+        // Check if camera release has been requested
+        if state.is_camera_release_requested() {
+            info!("Camera release requested - stopping capture loop");
+            // Drop the stream and device to release /dev/video0
+            drop(stream);
+            state.set_camera_released(true);
+            info!("Camera device released - {} is now available for other applications", input_device);
+
+            // Wait in a loop until restart is requested or process exits
+            loop {
+                std::thread::sleep(Duration::from_millis(500));
+                // If restart is requested, exit the function to allow process restart
+                if state.is_restart_requested() {
+                    info!("Restart requested while camera released - exiting capture loop");
+                    return Ok(());
+                }
+            }
+        }
+
         // Timing: Frame wait (waiting for camera hardware to deliver frame)
         let frame_wait_start = Instant::now();
 

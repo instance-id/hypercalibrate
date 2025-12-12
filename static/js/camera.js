@@ -11,6 +11,8 @@ export class CameraManager {
         this.controls = [];
         this.panelVisible = false;
         this.panelElement = null;
+        this.cameraReleased = false;
+        this.statusPollInterval = null;
 
         // Control dependencies (e.g., white_balance_temperature depends on auto_white_balance being off)
         // For menu-type controls like auto_exposure, use 'activeWhenValue' to specify the exact value(s)
@@ -119,6 +121,9 @@ export class CameraManager {
         loadingEl?.classList.remove('hidden');
         containerEl?.classList.add('hidden');
         unavailableEl?.classList.add('hidden');
+
+        // Also fetch camera status (released/active)
+        await this.getStatus();
 
         try {
             const response = await fetch('/api/camera/controls');
@@ -252,7 +257,7 @@ export class CameraManager {
             toggleHeader.appendChild(toggleValueEl);
 
             el.appendChild(toggleHeader);
-            
+
             // Render based on actual control type (menu vs boolean)
             if (groupedToggle.type === 'menu' || groupedToggle.type === 'integermenu') {
                 el.appendChild(this.createMenuControl(groupedToggle, toggleValueEl));
@@ -678,6 +683,117 @@ export class CameraManager {
         } catch (error) {
             console.error('Failed to refresh camera controls:', error);
             showToast('Failed to refresh camera controls', 'error');
+        }
+    }
+
+    /**
+     * Get camera device status (released/active)
+     */
+    async getStatus() {
+        try {
+            const response = await fetch('/api/camera/status');
+            const data = await response.json();
+            this.cameraReleased = data.released;
+            this.updateReleaseButtonState();
+            return data;
+        } catch (error) {
+            console.error('Failed to get camera status:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Release the camera device (frees /dev/video0 for other apps)
+     */
+    async releaseCamera() {
+        try {
+            const response = await fetch('/api/camera/release', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('Camera release requested', 'success');
+                // Start polling for status updates
+                this.startStatusPolling();
+            } else {
+                showToast('Failed to release camera: ' + (data.message || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Failed to release camera:', error);
+            showToast('Failed to release camera', 'error');
+        }
+    }
+
+    /**
+     * Re-acquire the camera device (triggers service restart)
+     */
+    async acquireCamera() {
+        try {
+            const response = await fetch('/api/camera/acquire', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('Camera acquire requested - service will restart', 'success');
+                // Stop polling since we're restarting
+                this.stopStatusPolling();
+            } else {
+                showToast('Failed to acquire camera: ' + (data.message || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Failed to acquire camera:', error);
+            showToast('Failed to acquire camera', 'error');
+        }
+    }
+
+    /**
+     * Toggle camera release state
+     */
+    async toggleCameraRelease() {
+        if (this.cameraReleased) {
+            await this.acquireCamera();
+        } else {
+            await this.releaseCamera();
+        }
+    }
+
+    /**
+     * Start polling for camera status updates
+     */
+    startStatusPolling() {
+        this.stopStatusPolling();
+        this.statusPollInterval = setInterval(async () => {
+            const status = await this.getStatus();
+            if (status && status.released) {
+                // Camera is now released, can stop frequent polling
+                this.stopStatusPolling();
+            }
+        }, 500);
+    }
+
+    /**
+     * Stop polling for camera status
+     */
+    stopStatusPolling() {
+        if (this.statusPollInterval) {
+            clearInterval(this.statusPollInterval);
+            this.statusPollInterval = null;
+        }
+    }
+
+    /**
+     * Update the release button state based on camera status
+     */
+    updateReleaseButtonState() {
+        const btn = document.getElementById('release-camera-btn');
+        if (!btn) return;
+
+        if (this.cameraReleased) {
+            btn.textContent = '📹 Acquire Camera';
+            btn.title = 'Re-acquire camera device (will restart service)';
+            btn.classList.add('camera-released');
+        } else {
+            btn.textContent = '📵 Release Camera';
+            btn.title = 'Release camera device for other applications';
+            btn.classList.remove('camera-released');
         }
     }
 }
