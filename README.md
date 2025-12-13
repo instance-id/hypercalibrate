@@ -4,9 +4,10 @@
 
 HyperCalibrate is a high-performance application designed to run on Raspberry Pi 5 (HyperBian) that:
 
-- Captures video from a USB camera
+- Captures video from a USB camera or **HDMI capture card**
 - Provides a web-based calibration interface for mapping TV screen corners
 - Applies real-time perspective correction (keystone adjustment)
+- **Color correction** with auto white balance for accurate LED colors
 - Outputs the corrected video to a virtual camera device for Hyperion to consume
 
 ## Features
@@ -19,6 +20,11 @@ HyperCalibrate is a high-performance application designed to run on Raspberry Pi
 - 📹 **Virtual Camera Output**: Creates a v4l2loopback device for Hyperion
 - 🐳 **Docker Build**: Cross-compile for Raspberry Pi from any machine
 - 🔧 **One-Command Deploy**: Build and deploy to HyperBian with a single command
+- 🎨 **Color Correction**: Full color pipeline with presets for different sources
+- ⚖️ **Auto White Balance**: One-click automatic color calibration (~80µs on Pi 5)
+- 📺 **HDMI Capture Support**: Works with USB capture cards for HDMI input
+- 🎛️ **Camera Controls**: Adjust brightness, contrast, saturation, and more
+- 🔄 **Video Device Selection**: Choose between multiple video inputs from the UI
 
 
 <img src="./media/hypercalibrate.png" alt="hypercalibrate" height="650">
@@ -57,7 +63,7 @@ Then open `http://192.168.1.100:8091` on your phone to calibrate!
 ### On Raspberry Pi
 
 - HyperBian (or Raspberry Pi OS)
-- USB Camera (V4L2 compatible)
+- USB Camera or HDMI Capture Card (V4L2 compatible)
 - Hyperion/HyperHDR
 
 ## Installation Options
@@ -170,6 +176,48 @@ In Hyperion/HyperHDR:
 5. Select **HyperCalibrate** (`/dev/video10`) as the video device
 6. Configure your LED layout as normal
 
+### Color Correction
+
+HyperCalibrate includes a full color correction pipeline to ensure accurate LED colors, especially important when using HDMI capture cards that may introduce color casts.
+
+**Quick Setup:**
+1. Open the web UI and click the **🎨 Color** button
+2. Enable color correction with the toggle
+3. Click **⚖️ Auto White Balance** for automatic calibration
+4. Or select a preset matching your source (HD Standard, HDR, PC Gaming, etc.)
+
+**Available Controls:**
+- **Color Space**: BT.601 (SD), BT.709 (HD), BT.2020 (UHD/HDR)
+- **Quantization Range**: Limited (16-235) or Full (0-255)
+- **White Balance**: Auto or manual RGB gain adjustment
+- **Software Adjustments**: Brightness, Contrast, Saturation, Hue, Gamma
+
+**Presets:**
+| Preset | Use Case |
+|--------|----------|
+| HD Standard (BT.709) | Most streaming services, Blu-ray, modern consoles |
+| HDR Content (BT.2020) | Netflix HDR, Prime Video HDR, HDR gaming |
+| PC/Gaming (Full Range) | PC output, consoles set to Full RGB |
+| SD Legacy (BT.601) | DVDs, older content, retro consoles |
+
+**Capture Format:**
+For best color accuracy with HDMI capture cards, select **YUYV** format in Video Settings. This enables proper color matrix conversion. MJPEG is faster but uses hardware color conversion which may be less accurate.
+
+### Using HDMI Capture Cards
+
+HyperCalibrate works great with USB HDMI capture cards for capturing your TV/monitor output:
+
+1. Connect your HDMI source → Capture Card → Raspberry Pi USB
+2. The capture card appears as a V4L2 video device (e.g., `/dev/video0`)
+3. Select the device in the web UI under **⚙️ Video Settings**
+4. Enable **Color Correction** and run **Auto White Balance** to compensate for any color cast from the capture card
+
+**Tips for HDMI Capture:**
+- Use **YUYV** capture format for accurate color matrix control
+- Run Auto White Balance with neutral/gray content on screen
+- If you see a yellow tint, the capture card likely needs white balance adjustment
+- Multiple capture devices? Run `sudo hypercalibrate-udev-setup` for persistent device names
+
 ### Service Management
 
 ```bash
@@ -198,23 +246,33 @@ sudo systemctl stop hypercalibrate
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────────┐     ┌──────────────┐
-│ USB Camera  │────▶│  HyperCalibrate │────▶│ Virtual Cam  │
-│ /dev/video0 │     │   (Rust App)    │     │ /dev/video10 │
-└─────────────┘     └────────┬────────┘     └──────┬───────┘
-                             │                     │
-                    ┌────────▼────────┐    ┌───────▼───────┐
-                    │    Web UI       │    │   Hyperion    │
-                    │ (Calibration)   │    │   (LED Out)   │
-                    └─────────────────┘    └───────────────┘
+┌─────────────────┐     ┌─────────────────┐     ┌──────────────┐
+│  USB Camera or  │────▶│  HyperCalibrate │────▶│ Virtual Cam  │
+│  HDMI Capture   │     │   (Rust App)    │     │ /dev/video10 │
+│  /dev/video0    │     └────────┬────────┘     └──────┬───────┘
+└─────────────────┘              │                     │
+                        ┌────────▼────────┐    ┌───────▼───────┐
+                        │    Web UI       │    │   Hyperion    │
+                        │ (Calibration)   │    │   (LED Out)   │
+                        └─────────────────┘    └───────────────┘
 ```
 
 ### Processing Pipeline
 
-1. **Capture**: V4L2 reads raw frames from USB camera
-2. **Transform**: Apply perspective transformation using calibration points
-3. **Output**: Write corrected frames to v4l2loopback device
-4. **Preview**: JPEG frames served via web server for calibration UI
+1. **Capture**: V4L2 reads frames from USB camera or HDMI capture card
+2. **Color Correction**: Apply color space conversion, white balance, and adjustments
+3. **Transform**: Apply perspective transformation using calibration points
+4. **Output**: Write corrected frames to v4l2loopback device
+5. **Preview**: JPEG frames served via web server for calibration UI
+
+### Color Pipeline
+
+```
+Raw YUYV/MJPEG → Color Matrix (BT.601/709/2020) → Range Expansion → RGB Gain (WB) → Adjustments → Output
+                      ↓                              ↓                  ↓              ↓
+                 Color Space                   Limited→Full        Auto/Manual    Brightness
+                 Conversion                    (16-235→0-255)      White Balance  Contrast, etc.
+```
 
 ## Performance
 
@@ -223,6 +281,8 @@ Optimized for Raspberry Pi 5:
 - Written in Rust with release optimizations (LTO, single codegen unit)
 - Direct V4L2 memory-mapped buffer access
 - Custom perspective transformation (no OpenCV dependency)
+- Auto white balance calculation: ~80µs (sparse sampling)
+- Color correction pipeline: <1ms overhead per frame
 - ~2.7MB binary size
 
 ## Additional Images
@@ -419,6 +479,8 @@ Options:
 
 ## API Endpoints
 
+### Calibration
+
 | Endpoint                     | Method | Description                   |
 | ---------------------------- | ------ | ----------------------------- |
 | `/`                          | GET    | Calibration web UI            |
@@ -432,9 +494,58 @@ Options:
 | `/api/calibration/save`      | POST   | Save to config file           |
 | `/api/calibration/enable`    | POST   | Enable transformation         |
 | `/api/calibration/disable`   | POST   | Disable transformation        |
+
+### Preview
+
+| Endpoint                     | Method | Description                   |
+| ---------------------------- | ------ | ----------------------------- |
 | `/api/preview`               | GET    | Corrected preview (JPEG)      |
 | `/api/preview/raw`           | GET    | Raw camera preview (JPEG)     |
 | `/api/preview/stream`        | GET    | MJPEG stream                  |
+| `/api/preview/activate`      | POST   | Activate preview encoding     |
+| `/api/preview/deactivate`    | POST   | Deactivate preview encoding   |
+
+### Color Correction
+
+| Endpoint                     | Method | Description                   |
+| ---------------------------- | ------ | ----------------------------- |
+| `/api/color`                 | GET    | Get color correction settings |
+| `/api/color`                 | POST   | Update color settings         |
+| `/api/color/presets`         | GET    | List available presets        |
+| `/api/color/preset/:name`    | POST   | Apply a color preset          |
+| `/api/color/auto-white-balance` | POST | Calculate and apply auto WB |
+
+### Video Settings
+
+| Endpoint                     | Method | Description                   |
+| ---------------------------- | ------ | ----------------------------- |
+| `/api/video/devices`         | GET    | List available video devices  |
+| `/api/video/device`          | GET    | Get current input device      |
+| `/api/video/device`          | POST   | Set input device (requires restart) |
+| `/api/video/settings`        | GET    | Get resolution/FPS settings   |
+| `/api/video/settings`        | POST   | Update video settings         |
+| `/api/video/format`          | GET    | Get capture format (MJPEG/YUYV) |
+| `/api/video/format`          | POST   | Set capture format            |
+
+### Camera Controls
+
+| Endpoint                     | Method | Description                   |
+| ---------------------------- | ------ | ----------------------------- |
+| `/api/camera/controls`       | GET    | Get available camera controls |
+| `/api/camera/controls`       | POST   | Update camera control values  |
+| `/api/camera/status`         | GET    | Get camera release status     |
+| `/api/camera/release`        | POST   | Release camera for other apps |
+| `/api/camera/acquire`        | POST   | Re-acquire camera             |
+
+### System
+
+| Endpoint                     | Method | Description                   |
+| ---------------------------- | ------ | ----------------------------- |
+| `/api/stats`                 | GET    | Performance statistics        |
+| `/api/stats/reset`           | POST   | Reset statistics              |
+| `/api/system/stats`          | GET    | System resource usage         |
+| `/api/system/restart`        | POST   | Restart HyperCalibrate service |
+| `/api/system/reboot`         | POST   | Reboot the Raspberry Pi       |
 
 ## License
 
