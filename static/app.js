@@ -14,6 +14,7 @@ import { DebugManager, debug } from './js/debug.js';
 import { CalibrationManager } from './js/calibration.js';
 import { TouchManager } from './js/touch.js';
 import { CameraManager } from './js/camera.js';
+import { ColorManager } from './js/color.js';
 import { VideoManager } from './js/video.js';
 import { PreviewManager } from './js/preview.js';
 import { StatsManager } from './js/stats.js';
@@ -37,6 +38,7 @@ class HyperCalibrate {
         this.calibration = new CalibrationManager(this);
         this.touch = new TouchManager(this);
         this.camera = new CameraManager(this);
+        this.color = new ColorManager(this);
         this.video = new VideoManager(this);
         this.preview = new PreviewManager(this);
         this.stats = new StatsManager(this);
@@ -62,6 +64,7 @@ class HyperCalibrate {
         this.preview.init(this.previewElement, this.overlayElement, this.previewWrapper);
         this.touch.init(this.overlayElement, this.calibration);
         this.camera.init(document.getElementById('camera-panel'));
+        this.color.init(document.getElementById('color-panel'));
 
         // Set up event listeners
         this.setupEventListeners();
@@ -141,6 +144,17 @@ class HyperCalibrate {
             this.camera.toggleCameraRelease();
         });
 
+        // Color panel controls
+        document.getElementById('toggle-color-panel')?.addEventListener('click', () => {
+            const visible = this.color.toggle();
+            requestAnimationFrame(() => this.preview.syncOverlaySize());
+        });
+
+        document.getElementById('close-color-panel')?.addEventListener('click', () => {
+            this.color.toggle(false);
+            requestAnimationFrame(() => this.preview.syncOverlaySize());
+        });
+
         // Video settings controls
         document.getElementById('resolution-select')?.addEventListener('change', (e) => {
             this.video.onResolutionChange(e.target.value);
@@ -164,8 +178,28 @@ class HyperCalibrate {
             this.stats.reset();
         });
 
+        // Restart dropdown
+        const restartDropdownBtn = document.getElementById('restart-dropdown-btn');
+        const restartDropdownMenu = document.querySelector('.restart-dropdown-menu');
+
+        restartDropdownBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            restartDropdownMenu?.classList.toggle('hidden');
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            restartDropdownMenu?.classList.add('hidden');
+        });
+
         document.getElementById('restart-service-btn')?.addEventListener('click', () => {
+            restartDropdownMenu?.classList.add('hidden');
             this.stats.restart();
+        });
+
+        document.getElementById('reboot-system-btn')?.addEventListener('click', () => {
+            restartDropdownMenu?.classList.add('hidden');
+            this.stats.rebootSystem();
         });
 
         // Debug panel controls

@@ -64,6 +64,55 @@ header h1 {
   gap: 0.75rem;
 }
 
+/* Restart Dropdown */
+.restart-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.restart-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.25rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--bg-tertiary);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 200;
+  min-width: 200px;
+  overflow: hidden;
+}
+
+.restart-dropdown-menu.hidden {
+  display: none;
+}
+
+.restart-option {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.restart-option:hover {
+  background: var(--bg-tertiary);
+}
+
+.restart-option-danger {
+  color: var(--accent);
+}
+
+.restart-option-danger:hover {
+  background: rgba(233, 69, 96, 0.15);
+}
+
 .status {
   padding: 0.25rem 0.75rem;
   border-radius: 1rem;
@@ -831,7 +880,7 @@ footer {
 
   /* Hide non-essential buttons in landscape header */
   #toggle-debug,
-  #restart-service-btn {
+  .restart-dropdown {
     display: none;
   }
 
@@ -1538,6 +1587,211 @@ div#video-settings-content div.camera-control {
     width: auto;
     height: auto;
     object-fit: contain;
+  }
+}
+
+/* ============================================================================
+   Color Correction Panel
+   ============================================================================ */
+
+.color-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 340px;
+  max-width: 90vw;
+  height: 100%;
+  background: var(--bg-secondary);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+}
+
+.color-panel.hidden {
+  transform: translateX(100%);
+}
+
+.color-controls-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.color-section {
+  background: var(--bg-primary);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.color-section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.color-enable-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.color-presets-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.color-preset-btn {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--bg-tertiary);
+  border-radius: 0.375rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.color-preset-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+}
+
+.color-preset-btn .preset-name {
+  display: block;
+  font-weight: 500;
+}
+
+.color-control {
+  margin-bottom: 0.75rem;
+}
+
+.color-control:last-child {
+  margin-bottom: 0;
+}
+
+.color-control.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.color-control-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.375rem;
+}
+
+.color-select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--bg-tertiary);
+  border-radius: 0.375rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.color-control-help {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+.color-slider-control {
+  margin-bottom: 1rem;
+}
+
+.color-slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.color-slider-value {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.color-slider-value.at-default {
+  color: var(--success);
+}
+
+.color-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  appearance: none;
+  cursor: pointer;
+}
+
+.color-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.color-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.color-slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.color-slider-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+.color-reset-btn {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--bg-tertiary);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 0.5rem;
+}
+
+.color-reset-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Adjust main content when color panel is open */
+body.color-panel-open main {
+  margin-right: 340px;
+}
+
+@media screen and (max-width: 768px) {
+  .color-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body.color-panel-open main {
+    margin-right: 0;
   }
 }
 

@@ -78,6 +78,8 @@ pub struct AppState {
     preview_frame: RwLock<Vec<u8>>,
     /// Latest raw (uncalibrated) preview frame (JPEG encoded)
     raw_preview_frame: RwLock<Vec<u8>>,
+    /// Raw RGB data for auto white balance (not JPEG encoded)
+    raw_rgb_frame: RwLock<Vec<u8>>,
     /// Frame dimensions
     width: u32,
     height: u32,
@@ -120,6 +122,7 @@ impl AppState {
             transform: RwLock::new(transform),
             preview_frame: RwLock::new(Vec::new()),
             raw_preview_frame: RwLock::new(Vec::new()),
+            raw_rgb_frame: RwLock::new(Vec::new()),
             width,
             height,
             fps,
@@ -246,6 +249,26 @@ impl AppState {
         if let Ok(jpeg) = encode_jpeg(rgb_data, width, height, 70) {
             *self.raw_preview_frame.write() = jpeg;
         }
+        // Also store raw RGB for auto white balance (sparse copy for efficiency)
+        // Only copy every 8th pixel to reduce memory and copy time
+        let step = 8;
+        let pixels = rgb_data.len() / 3;
+        let sampled_size = (pixels / step + 1) * 3;
+        let mut sampled = Vec::with_capacity(sampled_size);
+        for i in (0..pixels).step_by(step) {
+            let offset = i * 3;
+            if offset + 2 < rgb_data.len() {
+                sampled.push(rgb_data[offset]);
+                sampled.push(rgb_data[offset + 1]);
+                sampled.push(rgb_data[offset + 2]);
+            }
+        }
+        *self.raw_rgb_frame.write() = sampled;
+    }
+
+    /// Get the raw RGB frame for auto white balance
+    pub fn get_raw_rgb_frame(&self) -> Vec<u8> {
+        self.raw_rgb_frame.read().clone()
     }
 
     /// Get the latest preview frame
@@ -454,11 +477,22 @@ pub async fn run_server(addr: &str, state: Arc<AppState>) -> Result<()> {
         .route("/api/video/capabilities", get(get_video_capabilities))
         .route("/api/video/settings", get(get_video_settings))
         .route("/api/video/settings", post(set_video_settings))
+        .route("/api/video/devices", get(get_video_devices))
+        .route("/api/video/device", post(set_video_device))
+        .route("/api/video/format", get(get_video_format))
+        .route("/api/video/format", post(set_video_format))
         .route("/api/system/restart", post(request_system_restart))
+        .route("/api/system/reboot", post(request_system_reboot))
         // Camera device release/acquire
         .route("/api/camera/status", get(get_camera_status))
         .route("/api/camera/release", post(release_camera))
         .route("/api/camera/acquire", post(acquire_camera))
+        // Color correction API
+        .route("/api/color", get(get_color_settings))
+        .route("/api/color", post(set_color_settings))
+        .route("/api/color/presets", get(get_color_presets))
+        .route("/api/color/preset/:name", post(apply_color_preset))
+        .route("/api/color/auto-white-balance", post(auto_white_balance))
         // Preview streams
         .route("/api/preview", get(get_preview))
         .route("/api/preview/raw", get(get_raw_preview))
@@ -1167,6 +1201,340 @@ fn save_video_settings_to_config(config_path: &std::path::Path, width: u32, heig
     Ok(())
 }
 
+/// Video device information
+#[derive(Serialize)]
+struct VideoDeviceInfo {
+    path: String,
+    name: String,
+    is_current: bool,
+    is_capture: bool,
+}
+
+/// Get list of available video devices
+async fn get_video_devices(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let mut devices = Vec::new();
+
+    // Get current input device from config
+    let current_device = state.config.read().video.input_device.clone();
+
+    // Scan /dev for video devices
+    if let Ok(entries) = std::fs::read_dir("/dev") {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+            // Match video* devices and symlinks like hdmi_capture
+            if filename.starts_with("video") || filename == "hdmi_capture" || filename == "usb_camera" {
+                let path_str = path.to_string_lossy().to_string();
+
+                // Try to get device name using v4l2
+                let name = get_v4l2_device_name(&path_str).unwrap_or_else(|| {
+                    if filename == "hdmi_capture" {
+                        "HDMI Capture (symlink)".to_string()
+                    } else if filename == "usb_camera" {
+                        "USB Camera (symlink)".to_string()
+                    } else {
+                        "Unknown Device".to_string()
+                    }
+                });
+
+                // Check if this is a capture device (not output/loopback)
+                let is_capture = !name.contains("HyperCalibrate") &&
+                                 !name.contains("Loopback") &&
+                                 !path_str.contains("video10"); // Skip our output device
+
+                // Skip metadata nodes (they have the same name but higher numbers)
+                // and skip non-capture devices for the list
+                if is_capture {
+                    devices.push(VideoDeviceInfo {
+                        path: path_str.clone(),
+                        name,
+                        is_current: path_str == current_device,
+                        is_capture,
+                    });
+                }
+            }
+        }
+    }
+
+    // Sort by path
+    devices.sort_by(|a, b| a.path.cmp(&b.path));
+
+    Json(serde_json::json!({
+        "devices": devices,
+        "current": current_device
+    }))
+}
+
+/// Request to change input device
+#[derive(Deserialize)]
+struct SetDeviceRequest {
+    device: String,
+}
+
+/// Set the input video device (requires restart)
+async fn set_video_device(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<SetDeviceRequest>,
+) -> impl IntoResponse {
+    let device = request.device.trim().to_string();
+
+    // Validate the device exists
+    if !std::path::Path::new(&device).exists() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Device not found",
+                "message": format!("{} does not exist", device)
+            }))
+        ).into_response();
+    }
+
+    // Get current device
+    let current_device = state.config.read().video.input_device.clone();
+
+    if device == current_device {
+        return Json(serde_json::json!({
+            "success": true,
+            "restart_required": false,
+            "message": "Device is already set to this value."
+        })).into_response();
+    }
+
+    // Save to config file
+    match save_input_device_to_config(&state.config_path, &device) {
+        Ok(_) => {
+            tracing::info!("Input device changed from {} to {}", current_device, device);
+            Json(serde_json::json!({
+                "success": true,
+                "restart_required": true,
+                "message": format!("Input device set to {}. Restart the service to apply.", device)
+            })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to save input device to config: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "Failed to save settings",
+                    "message": e.to_string()
+                }))
+            ).into_response()
+        }
+    }
+}
+
+/// Save input device to config file
+fn save_input_device_to_config(config_path: &std::path::Path, device: &str) -> anyhow::Result<()> {
+    use std::fs;
+    use std::io::Write;
+    use anyhow::Context;
+
+    let content = fs::read_to_string(config_path)
+        .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
+
+    let mut new_lines = Vec::new();
+    let mut in_video_section = false;
+    let mut found_input_device = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Track section changes
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            if in_video_section && !found_input_device {
+                new_lines.push(format!("input_device = \"{}\"", device));
+            }
+            in_video_section = trimmed == "[video]";
+        }
+
+        // Replace input_device in video section
+        if in_video_section && trimmed.starts_with("input_device") {
+            new_lines.push(format!("input_device = \"{}\"", device));
+            found_input_device = true;
+        } else {
+            new_lines.push(line.to_string());
+        }
+    }
+
+    // If we were in video section at end and didn't find input_device
+    if in_video_section && !found_input_device {
+        new_lines.push(format!("input_device = \"{}\"", device));
+    }
+
+    // Write back
+    let mut file = fs::File::create(config_path)
+        .with_context(|| format!("Failed to open config file for writing: {}", config_path.display()))?;
+
+    for (i, line) in new_lines.iter().enumerate() {
+        if i > 0 {
+            writeln!(file)?;
+        }
+        write!(file, "{}", line)?;
+    }
+    writeln!(file)?;
+
+    Ok(())
+}
+
+/// Get current video format setting
+async fn get_video_format(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let format = state.config.read().video.format;
+    let format_str = match format {
+        crate::config::CaptureFormat::Mjpeg => "mjpeg",
+        crate::config::CaptureFormat::Yuyv => "yuyv",
+    };
+
+    Json(serde_json::json!({
+        "format": format_str,
+        "description": match format {
+            crate::config::CaptureFormat::Mjpeg => "MJPEG (hardware color conversion)",
+            crate::config::CaptureFormat::Yuyv => "YUYV (software color conversion - better color control)",
+        }
+    }))
+}
+
+/// Request to change video format
+#[derive(Deserialize)]
+struct VideoFormatRequest {
+    format: String,
+}
+
+/// Set video format preference (requires restart)
+async fn set_video_format(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<VideoFormatRequest>,
+) -> impl IntoResponse {
+    let new_format = match request.format.to_lowercase().as_str() {
+        "mjpeg" | "mjpg" => crate::config::CaptureFormat::Mjpeg,
+        "yuyv" => crate::config::CaptureFormat::Yuyv,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "Invalid format",
+                    "message": "Format must be 'mjpeg' or 'yuyv'"
+                }))
+            ).into_response();
+        }
+    };
+
+    let current_format = state.config.read().video.format;
+
+    if new_format == current_format {
+        return Json(serde_json::json!({
+            "success": true,
+            "restart_required": false,
+            "message": "Format is already set to this value."
+        })).into_response();
+    }
+
+    // Save to config file
+    match save_video_format_to_config(&state.config_path, new_format) {
+        Ok(_) => {
+            tracing::info!("Video format changed from {:?} to {:?}", current_format, new_format);
+            Json(serde_json::json!({
+                "success": true,
+                "restart_required": true,
+                "message": format!("Video format set to {:?}. Restart the service to apply.", new_format)
+            })).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to save video format to config: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "Failed to save settings",
+                    "message": e.to_string()
+                }))
+            ).into_response()
+        }
+    }
+}
+
+/// Save video format to config file
+fn save_video_format_to_config(config_path: &std::path::Path, format: crate::config::CaptureFormat) -> anyhow::Result<()> {
+    use std::fs;
+    use std::io::Write;
+    use anyhow::Context;
+
+    let format_str = match format {
+        crate::config::CaptureFormat::Mjpeg => "Mjpeg",
+        crate::config::CaptureFormat::Yuyv => "Yuyv",
+    };
+
+    let content = fs::read_to_string(config_path)
+        .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
+
+    let mut new_lines = Vec::new();
+    let mut in_video_section = false;
+    let mut found_format = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Track section changes
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            // If leaving video section, add format if not found
+            if in_video_section && !found_format {
+                new_lines.push(format!("format = \"{}\"", format_str));
+            }
+            in_video_section = trimmed == "[video]";
+        }
+
+        // Handle video section settings
+        if in_video_section && trimmed.starts_with("format") && trimmed.contains('=') {
+            new_lines.push(format!("format = \"{}\"", format_str));
+            found_format = true;
+            continue;
+        }
+
+        new_lines.push(line.to_string());
+    }
+
+    // If we ended in video section and didn't find format, add it
+    if in_video_section && !found_format {
+        new_lines.push(format!("format = \"{}\"", format_str));
+    }
+
+    // Write back
+    let mut file = fs::File::create(config_path)
+        .with_context(|| format!("Failed to create config file: {}", config_path.display()))?;
+
+    for (i, line) in new_lines.iter().enumerate() {
+        if i > 0 {
+            writeln!(file)?;
+        }
+        write!(file, "{}", line)?;
+    }
+    writeln!(file)?;
+
+    Ok(())
+}
+
+/// Get V4L2 device name
+fn get_v4l2_device_name(path: &str) -> Option<String> {
+    use std::process::Command;
+
+    let output = Command::new("v4l2-ctl")
+        .args(["-d", path, "--info"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if line.contains("Card type") {
+            return Some(line.split(':').nth(1)?.trim().to_string());
+        }
+    }
+
+    None
+}
+
 /// Request a system restart
 async fn request_system_restart(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // Request restart
@@ -1187,6 +1555,32 @@ async fn request_system_restart(State(state): State<Arc<AppState>>) -> impl Into
     Json(serde_json::json!({
         "success": true,
         "message": message
+    })).into_response()
+}
+
+/// Request a full system reboot
+async fn request_system_reboot() -> impl IntoResponse {
+    tracing::info!("System reboot requested via API");
+
+    // Spawn the reboot command in background
+    tokio::spawn(async {
+        // Give time for the response to be sent
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        // Execute reboot command
+        let result = tokio::process::Command::new("sudo")
+            .args(["reboot"])
+            .output()
+            .await;
+
+        if let Err(e) = result {
+            tracing::error!("Failed to execute reboot command: {}", e);
+        }
+    });
+
+    Json(serde_json::json!({
+        "success": true,
+        "message": "System reboot initiated. The device will restart shortly."
     })).into_response()
 }
 
@@ -1388,4 +1782,281 @@ async fn clear_debug_log() -> impl IntoResponse {
             StatusCode::INTERNAL_SERVER_ERROR
         }
     }
+}
+
+// ============================================================================
+// Color Correction API
+// ============================================================================
+
+use crate::color::{ColorCorrection, ColorSpace, QuantizationRange};
+
+/// Color settings response
+#[derive(Serialize)]
+struct ColorSettingsResponse {
+    settings: ColorCorrection,
+    color_spaces: Vec<ColorSpaceInfo>,
+    quantization_ranges: Vec<QuantizationRangeInfo>,
+}
+
+#[derive(Serialize)]
+struct ColorSpaceInfo {
+    value: String,
+    label: String,
+}
+
+#[derive(Serialize)]
+struct QuantizationRangeInfo {
+    value: String,
+    label: String,
+}
+
+/// Get current color correction settings
+async fn get_color_settings(State(state): State<Arc<AppState>>) -> Json<ColorSettingsResponse> {
+    let config = state.config.read();
+
+    let color_spaces = vec![
+        ColorSpaceInfo { value: "bt601".to_string(), label: "BT.601 (SD)".to_string() },
+        ColorSpaceInfo { value: "bt709".to_string(), label: "BT.709 (HD)".to_string() },
+        ColorSpaceInfo { value: "bt2020".to_string(), label: "BT.2020 (UHD/HDR)".to_string() },
+    ];
+
+    let quantization_ranges = vec![
+        QuantizationRangeInfo { value: "limited".to_string(), label: "Limited (16-235)".to_string() },
+        QuantizationRangeInfo { value: "full".to_string(), label: "Full (0-255)".to_string() },
+    ];
+
+    Json(ColorSettingsResponse {
+        settings: config.color.clone(),
+        color_spaces,
+        quantization_ranges,
+    })
+}
+
+/// Request to update color settings
+#[derive(Deserialize)]
+struct SetColorSettingsRequest {
+    #[serde(default)]
+    enabled: Option<bool>,
+    #[serde(default)]
+    color_space: Option<String>,
+    #[serde(default)]
+    input_range: Option<String>,
+    #[serde(default)]
+    brightness: Option<i32>,
+    #[serde(default)]
+    contrast: Option<f32>,
+    #[serde(default)]
+    saturation: Option<f32>,
+    #[serde(default)]
+    hue: Option<f32>,
+    #[serde(default)]
+    gamma: Option<f32>,
+    #[serde(default)]
+    red_gain: Option<f32>,
+    #[serde(default)]
+    green_gain: Option<f32>,
+    #[serde(default)]
+    blue_gain: Option<f32>,
+}
+
+/// Set color correction settings
+async fn set_color_settings(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SetColorSettingsRequest>,
+) -> impl IntoResponse {
+    {
+        let mut config = state.config.write();
+
+        if let Some(enabled) = req.enabled {
+            config.color.enabled = enabled;
+        }
+
+        if let Some(cs) = req.color_space {
+            config.color.color_space = match cs.as_str() {
+                "bt601" => ColorSpace::Bt601,
+                "bt709" => ColorSpace::Bt709,
+                "bt2020" => ColorSpace::Bt2020,
+                _ => config.color.color_space,
+            };
+        }
+
+        if let Some(range) = req.input_range {
+            config.color.input_range = match range.as_str() {
+                "limited" => QuantizationRange::Limited,
+                "full" => QuantizationRange::Full,
+                _ => config.color.input_range,
+            };
+        }
+
+        if let Some(brightness) = req.brightness {
+            config.color.brightness = brightness.clamp(-100, 100);
+        }
+
+        if let Some(contrast) = req.contrast {
+            config.color.contrast = contrast.clamp(0.0, 3.0);
+        }
+
+        if let Some(saturation) = req.saturation {
+            config.color.saturation = saturation.clamp(0.0, 3.0);
+        }
+
+        if let Some(hue) = req.hue {
+            config.color.hue = hue.clamp(-180.0, 180.0);
+        }
+
+        if let Some(gamma) = req.gamma {
+            config.color.gamma = gamma.clamp(0.1, 3.0);
+        }
+
+        if let Some(red_gain) = req.red_gain {
+            config.color.red_gain = red_gain.clamp(0.5, 2.0);
+        }
+
+        if let Some(green_gain) = req.green_gain {
+            config.color.green_gain = green_gain.clamp(0.5, 2.0);
+        }
+
+        if let Some(blue_gain) = req.blue_gain {
+            config.color.blue_gain = blue_gain.clamp(0.5, 2.0);
+        }
+    }
+
+    // Auto-save config
+    if let Err(e) = state.save_config() {
+        tracing::warn!("Failed to auto-save color settings: {}", e);
+    }
+
+    StatusCode::OK
+}
+
+/// Color preset info
+#[derive(Serialize)]
+struct ColorPresetInfo {
+    id: String,
+    name: String,
+    description: String,
+}
+
+/// Get available color presets
+async fn get_color_presets() -> Json<Vec<ColorPresetInfo>> {
+    Json(vec![
+        ColorPresetInfo {
+            id: "passthrough".to_string(),
+            name: "Passthrough (Disabled)".to_string(),
+            description: "No color correction - use raw capture data".to_string(),
+        },
+        ColorPresetInfo {
+            id: "hd_standard".to_string(),
+            name: "HD Standard (BT.709)".to_string(),
+            description: "Standard HD content - most streaming services in SDR mode".to_string(),
+        },
+        ColorPresetInfo {
+            id: "hdr_to_sdr".to_string(),
+            name: "HDR Content (BT.2020)".to_string(),
+            description: "HDR content from Netflix, Prime Video, etc. - converts to SDR".to_string(),
+        },
+        ColorPresetInfo {
+            id: "pc_gaming".to_string(),
+            name: "PC/Gaming (Full Range)".to_string(),
+            description: "PC content or gaming consoles set to full RGB range".to_string(),
+        },
+        ColorPresetInfo {
+            id: "sd_legacy".to_string(),
+            name: "SD Legacy (BT.601)".to_string(),
+            description: "Older SD content, DVDs, or legacy devices".to_string(),
+        },
+    ])
+}
+
+/// Auto white balance response
+#[derive(Serialize)]
+struct AutoWhiteBalanceResponse {
+    success: bool,
+    red_gain: f32,
+    green_gain: f32,
+    blue_gain: f32,
+    confidence: f32,
+    message: String,
+}
+
+/// Calculate and apply auto white balance
+/// Uses Gray World algorithm with sparse sampling for performance
+async fn auto_white_balance(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    // Get the current raw RGB frame (sparse sampled, before color correction)
+    let raw_rgb = state.get_raw_rgb_frame();
+
+    if raw_rgb.is_empty() {
+        return Json(AutoWhiteBalanceResponse {
+            success: false,
+            red_gain: 1.0,
+            green_gain: 1.0,
+            blue_gain: 1.0,
+            confidence: 0.0,
+            message: "No preview frame available. Make sure preview is active.".to_string(),
+        });
+    }
+
+    // Calculate white balance with step=1 since data is already sparse sampled
+    // The raw_rgb_frame is already sampled at 1/8th density
+    let start = std::time::Instant::now();
+    let result = crate::color::calculate_auto_white_balance(&raw_rgb, 1);
+    let elapsed_us = start.elapsed().as_micros();
+
+    tracing::info!(
+        "Auto white balance calculated in {}µs: R={:.3}, G={:.3}, B={:.3}, confidence={:.2}",
+        elapsed_us, result.red_gain, result.green_gain, result.blue_gain, result.confidence
+    );
+
+    // Apply the calculated gains
+    {
+        let mut config = state.config.write();
+        config.color.red_gain = result.red_gain;
+        config.color.green_gain = result.green_gain;
+        config.color.blue_gain = result.blue_gain;
+        config.color.enabled = true;
+    }
+
+    // Auto-save config
+    if let Err(e) = state.save_config() {
+        tracing::warn!("Failed to auto-save white balance: {}", e);
+    }
+
+    Json(AutoWhiteBalanceResponse {
+        success: true,
+        red_gain: result.red_gain,
+        green_gain: result.green_gain,
+        blue_gain: result.blue_gain,
+        confidence: result.confidence,
+        message: format!("White balance applied in {}µs", elapsed_us),
+    })
+}
+
+/// Apply a color preset
+async fn apply_color_preset(
+    State(state): State<Arc<AppState>>,
+    Path(preset_name): Path<String>,
+) -> impl IntoResponse {
+    let preset = match preset_name.as_str() {
+        "passthrough" => ColorCorrection::default(),
+        "hd_standard" => ColorCorrection::preset_hd_standard(),
+        "hdr_to_sdr" => ColorCorrection::preset_hdr_to_sdr(),
+        "pc_gaming" => ColorCorrection::preset_pc_gaming(),
+        "sd_legacy" => ColorCorrection::preset_sd_legacy(),
+        _ => return (StatusCode::BAD_REQUEST, "Unknown preset").into_response(),
+    };
+
+    {
+        let mut config = state.config.write();
+        config.color = preset;
+    }
+
+    // Auto-save config
+    if let Err(e) = state.save_config() {
+        tracing::warn!("Failed to auto-save color preset: {}", e);
+    }
+
+    tracing::info!("Applied color preset: {}", preset_name);
+    StatusCode::OK.into_response()
 }

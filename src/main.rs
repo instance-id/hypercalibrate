@@ -7,6 +7,7 @@
 mod calibration;
 mod camera_controls;
 mod capture;
+mod color;
 mod config;
 mod output;
 mod server;
@@ -86,6 +87,7 @@ async fn main() -> Result<()> {
     let width = config.video.width;
     let height = config.video.height;
     let fps = config.video.fps;
+    let preferred_format = config.video.format;
     let host = config.server.host.clone();
     let port = config.server.port;
 
@@ -116,6 +118,7 @@ async fn main() -> Result<()> {
             width,
             height,
             fps,
+            preferred_format,
             pipeline_state,
         )
     });
