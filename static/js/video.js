@@ -15,6 +15,13 @@ export class VideoManager {
         this.fps = 30;
         this.selectedResolution = null;
         this.selectedFps = null;
+        this.devices = [];
+        this.currentDevice = '';
+        this.selectedDevice = null;
+        this.pendingDevice = false;
+        this.currentFormat = 'mjpeg';
+        this.selectedFormat = null;
+        this.pendingFormat = false;
     }
 
     /**
@@ -54,12 +61,122 @@ export class VideoManager {
             this.render();
             contentEl?.classList.remove('hidden');
 
+            await this.loadDevices();
+            await this.loadFormat();
             await this.checkPending();
         } catch (error) {
             console.error('Failed to load video settings:', error);
             loadingEl?.classList.add('hidden');
             unavailableEl?.classList.remove('hidden');
         }
+    }
+
+    /**
+     * Load available video devices
+     */
+    async loadDevices() {
+        try {
+            const response = await fetch('/api/video/devices');
+            if (!response.ok) return;
+
+            const data = await response.json();
+            this.devices = data.devices || [];
+            this.currentDevice = data.current || '';
+            this.selectedDevice = this.currentDevice;
+
+            this.renderDevices();
+        } catch (error) {
+            console.error('Failed to load video devices:', error);
+        }
+    }
+
+    /**
+     * Render device selector
+     */
+    renderDevices() {
+        const deviceSelect = document.getElementById('device-select');
+        const currentDeviceEl = document.getElementById('current-device');
+
+        if (!deviceSelect) return;
+
+        // Show short name for current device
+        const currentDev = this.devices.find(d => d.path === this.currentDevice);
+        if (currentDeviceEl) {
+            currentDeviceEl.textContent = currentDev ? currentDev.name.substring(0, 20) : this.currentDevice.split('/').pop();
+        }
+
+        deviceSelect.innerHTML = '';
+        for (const device of this.devices) {
+            const option = document.createElement('option');
+            option.value = device.path;
+            option.textContent = `${device.path.split('/').pop()}: ${device.name}`;
+            if (device.path === this.currentDevice) {
+                option.selected = true;
+            }
+            deviceSelect.appendChild(option);
+        }
+
+        // Add event listener
+        deviceSelect.addEventListener('change', (e) => this.onDeviceChange(e.target.value));
+    }
+
+    /**
+     * Handle device change
+     */
+    onDeviceChange(value) {
+        this.selectedDevice = value;
+        this.pendingDevice = value !== this.currentDevice;
+        this.updatePendingState();
+    }
+
+    /**
+     * Load current video format
+     */
+    async loadFormat() {
+        try {
+            const response = await fetch('/api/video/format');
+            if (!response.ok) return;
+
+            const data = await response.json();
+            this.currentFormat = data.format || 'mjpeg';
+            this.selectedFormat = this.currentFormat;
+
+            this.renderFormat();
+        } catch (error) {
+            console.error('Failed to load video format:', error);
+        }
+    }
+
+    /**
+     * Render format selector
+     */
+    renderFormat() {
+        const formatSelect = document.getElementById('format-select');
+        const currentFormatEl = document.getElementById('current-format');
+
+        if (!formatSelect) return;
+
+        // Show current format
+        if (currentFormatEl) {
+            currentFormatEl.textContent = this.currentFormat.toUpperCase();
+        }
+
+        formatSelect.value = this.currentFormat;
+
+        // Add event listener (only once)
+        if (!formatSelect.dataset.listenerAdded) {
+            formatSelect.addEventListener('change', (e) => this.onFormatChange(e.target.value));
+            formatSelect.dataset.listenerAdded = 'true';
+        }
+    }
+
+    /**
+     * Handle format change
+     */
+    onFormatChange(value) {
+        this.selectedFormat = value;
+        this.pendingFormat = value !== this.currentFormat;
+        this.updatePendingState();
     }
 
     /**
@@ -161,7 +278,9 @@ export class VideoManager {
         const hasChanges =
             selectedWidth !== this.width ||
             selectedHeight !== this.height ||
-            this.selectedFps !== this.fps;
+            this.selectedFps !== this.fps ||
+            this.pendingDevice ||
+            this.pendingFormat;
 
         const noticeEl = document.getElementById('pending-settings-notice');
         const applyBtn = document.getElementById('apply-video-settings-btn');
@@ -214,19 +333,66 @@ export class VideoManager {
         applyBtn.textContent = 'Applying...';
 
         try {
-            const saveResponse = await fetch('/api/video/settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ width, height, fps })
-            });
+            let needsRestart = false;
 
-            const saveResult = await saveResponse.json();
+            // Save device change if pending
+            if (this.pendingDevice && this.selectedDevice !== this.currentDevice) {
+                const deviceResponse = await fetch('/api/video/device', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device: this.selectedDevice })
+                });
 
-            if (!saveResponse.ok) {
-                throw new Error(saveResult.message || 'Failed to save settings');
+                const deviceResult = await deviceResponse.json();
+                if (!deviceResponse.ok) {
+                    throw new Error(deviceResult.message || 'Failed to save device');
+                }
+                if (deviceResult.restart_required) {
+                    needsRestart = true;
+                }
             }
 
-            if (saveResult.restart_required) {
+            // Save format change if pending
+            if (this.pendingFormat && this.selectedFormat !== this.currentFormat) {
+                const formatResponse = await fetch('/api/video/format', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ format: this.selectedFormat })
+                });
+
+                const formatResult = await formatResponse.json();
+                if (!formatResponse.ok) {
+                    throw new Error(formatResult.message || 'Failed to save format');
+                }
+                if (formatResult.restart_required) {
+                    needsRestart = true;
+                }
+            }
+
+            // Save resolution/fps changes
+            const [selectedWidth, selectedHeight] = this.selectedResolution.split('x').map(Number);
+            const hasVideoChanges = selectedWidth !== this.width ||
+                                    selectedHeight !== this.height ||
+                                    this.selectedFps !== this.fps;
+
+            if (hasVideoChanges) {
+                const saveResponse = await fetch('/api/video/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ width, height, fps })
+                });
+
+                const saveResult = await saveResponse.json();
+
+                if (!saveResponse.ok) {
+                    throw new Error(saveResult.message || 'Failed to save settings');
+                }
+                if (saveResult.restart_required) {
+                    needsRestart = true;
+                }
+            }
+
+            if (needsRestart) {
                 showToast('Settings saved. Restarting service...', 'success');
 
                 const restartResponse = await fetch('/api/system/restart', { method: 'POST' });
@@ -240,7 +406,7 @@ export class VideoManager {
                     throw new Error(restartResult.message || 'Failed to restart');
                 }
             } else {
-                showToast(saveResult.message, 'success');
+                showToast('No changes to apply.', 'info');
                 applyBtn.disabled = false;
                 applyBtn.textContent = 'Apply & Restart';
                 this.updatePendingState();

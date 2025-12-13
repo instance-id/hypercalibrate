@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::color::ColorCorrection;
+
 /// A 2D point with normalized coordinates (0.0 to 1.0)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Point {
@@ -200,6 +202,16 @@ impl Calibration {
     }
 }
 
+/// Preferred capture format
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum CaptureFormat {
+    /// Prefer MJPEG (lower bandwidth, but color conversion done by hardware)
+    #[default]
+    Mjpeg,
+    /// Prefer YUYV (higher bandwidth, but we control color conversion)
+    Yuyv,
+}
+
 /// Video configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoConfig {
@@ -208,6 +220,9 @@ pub struct VideoConfig {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
+    /// Preferred capture format (MJPEG or YUYV)
+    #[serde(default)]
+    pub format: CaptureFormat,
 }
 
 impl Default for VideoConfig {
@@ -218,6 +233,7 @@ impl Default for VideoConfig {
             width: 640,
             height: 480,
             fps: 30,
+            format: CaptureFormat::default(),
         }
     }
 }
@@ -252,6 +268,10 @@ pub struct Config {
 
     #[serde(default)]
     pub camera: CameraConfig,
+
+    /// Color correction settings for HDMI capture
+    #[serde(default)]
+    pub color: ColorCorrection,
 }
 
 /// Camera hardware control settings

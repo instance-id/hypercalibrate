@@ -15,8 +15,15 @@
             <h1>🎯 HyperCalibrate</h1>
             <div class="header-controls">
                 <button id="toggle-camera-panel" class="btn btn-icon" title="Camera Settings">📷</button>
+                <button id="toggle-color-panel" class="btn btn-icon" title="Color Correction">🎨</button>
                 <button id="toggle-debug" class="btn btn-icon" title="Toggle Touch Debug">🐛</button>
-                <button id="restart-service-btn" class="btn btn-icon btn-danger-icon" title="Restart HyperCalibrate service">🔄</button>
+                <div class="restart-dropdown">
+                    <button id="restart-dropdown-btn" class="btn btn-icon btn-danger-icon" title="Restart Options">🔄</button>
+                    <div class="restart-dropdown-menu hidden">
+                        <button id="restart-service-btn" class="restart-option">🔄 Restart HyperCalibrate</button>
+                        <button id="reboot-system-btn" class="restart-option restart-option-danger">⚡ Reboot System</button>
+                    </div>
+                </div>
                 <div class="status" id="status">Connecting...</div>
             </div>
         </header>
@@ -70,6 +77,19 @@
                 </div>
             </div>
 
+            <!-- Color Correction Panel (collapsible sidebar) -->
+            <div id="color-panel" class="color-panel hidden">
+                <div class="panel-header">
+                    <h2>🎨 Color Correction</h2>
+                    <button id="close-color-panel" class="btn btn-icon btn-small">✕</button>
+                </div>
+                <div class="panel-content">
+                    <div id="color-controls-container" class="color-controls-container">
+                        <!-- Controls will be dynamically inserted here -->
+                    </div>
+                </div>
+            </div>
+
             <!-- Camera Controls Panel (collapsible sidebar) -->
             <div id="camera-panel" class="camera-panel hidden">
                 <div class="panel-header">
@@ -87,6 +107,15 @@
                             <div id="video-settings-content" class="hidden">
                                 <div class="camera-control">
                                     <div class="camera-control-header">
+                                        <span class="camera-control-name">Input Device</span>
+                                        <span class="camera-control-value" id="current-device">--</span>
+                                    </div>
+                                    <select id="device-select" class="camera-control-select">
+                                        <!-- Options populated dynamically -->
+                                    </select>
+                                </div>
+                                <div class="camera-control" style="margin-top: 0.75rem;">
+                                    <div class="camera-control-header">
                                         <span class="camera-control-name">Resolution</span>
                                         <span class="camera-control-value" id="current-resolution">--</span>
                                     </div>
@@ -101,6 +130,16 @@
                                     </div>
                                     <select id="fps-select" class="camera-control-select">
                                         <!-- Options populated dynamically -->
+                                    </select>
+                                </div>
+                                <div class="camera-control" style="margin-top: 0.75rem;">
+                                    <div class="camera-control-header">
+                                        <span class="camera-control-name">Capture Format</span>
+                                        <span class="camera-control-value" id="current-format">--</span>
+                                    </div>
+                                    <select id="format-select" class="camera-control-select">
+                                        <option value="mjpeg">MJPEG (hardware color)</option>
+                                        <option value="yuyv">YUYV (software color - better control)</option>
                                     </select>
                                 </div>
                                 <div id="pending-settings-notice" class="pending-notice hidden">

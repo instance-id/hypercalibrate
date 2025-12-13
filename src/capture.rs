@@ -19,6 +19,7 @@ use v4l::io::traits::CaptureStream;
 use v4l::video::Capture;
 use v4l::{Device, FourCC};
 
+use crate::color::{apply_color_correction, yuyv_to_rgb_corrected, ColorCorrectionLUT};
 use crate::output::VirtualCamera;
 use crate::server::AppState;
 
@@ -28,15 +29,23 @@ thread_local! {
         std::cell::RefCell::new(turbojpeg::Decompressor::new().ok());
 }
 
-/// Supported pixel formats in order of preference
-/// MJPEG is preferred for high FPS cameras - compressed format uses less USB bandwidth
-/// and allows higher frame rates. Modern CPUs decode MJPEG very fast with turbojpeg SIMD.
-const PREFERRED_FORMATS: &[&[u8; 4]] = &[
+/// Supported pixel formats - MJPEG first (default)
+const FORMATS_MJPEG_FIRST: &[&[u8; 4]] = &[
     b"MJPG", // Motion JPEG - compressed, enables high FPS (60/120), fast turbojpeg SIMD decode
     b"YUYV", // YUV 4:2:2 - uncompressed, limited to ~30fps at 640x480 due to USB bandwidth
     b"RGB3", // RGB24 - simple but less common
     b"BGR3", // BGR24 - simple but less common
 ];
+
+/// Supported pixel formats - YUYV first (for color correction control)
+const FORMATS_YUYV_FIRST: &[&[u8; 4]] = &[
+    b"YUYV", // YUV 4:2:2 - we control color conversion, proper color matrix support
+    b"MJPG", // Motion JPEG - fallback if YUYV not available
+    b"RGB3", // RGB24 - simple but less common
+    b"BGR3", // BGR24 - simple but less common
+];
+
+use crate::config::CaptureFormat;
 
 /// Run the video capture and processing pipeline
 pub fn run_pipeline(
@@ -45,12 +54,14 @@ pub fn run_pipeline(
     width: u32,
     height: u32,
     fps: u32,
+    preferred_format: CaptureFormat,
     state: Arc<AppState>,
 ) -> Result<()> {
     info!("=== HyperCalibrate Video Pipeline ===");
     info!("Input device: {}", input_device);
     info!("Output device: {}", output_device);
     info!("Requested resolution: {}x{} @ {} fps", width, height, fps);
+    info!("Preferred format: {:?}", preferred_format);
 
     // Open the capture device
     let dev = Device::with_path(input_device)
@@ -61,8 +72,8 @@ pub fn run_pipeline(
         .context("Failed to query device capabilities")?;
     info!("Camera: {} (driver: {})", caps.card, caps.driver);
 
-    // Set the format
-    let format = configure_capture_format(&dev, width, height)?;
+    // Set the format based on preference
+    let format = configure_capture_format(&dev, width, height, preferred_format)?;
     info!(
         "Capture format: {}x{} {:?}",
         format.width, format.height,
@@ -129,6 +140,16 @@ pub fn run_pipeline(
         info!("TurboJPEG decompressor initialized");
     }
 
+    // Initialize color correction LUT from config
+    let mut color_lut = {
+        let config = state.config.read();
+        ColorCorrectionLUT::from_settings(&config.color)
+    };
+    let mut last_color_settings_hash = {
+        let config = state.config.read();
+        color_settings_hash(&config.color)
+    };
+
     loop {
         // Check if camera release has been requested
         if state.is_camera_release_requested() {
@@ -161,20 +182,36 @@ pub fn run_pipeline(
         // Get current transform from shared state
         let transform = state.get_transform();
 
-        // Check if calibration is enabled
-        let calibration_enabled = {
+        // Check if calibration is enabled and get color settings
+        let (calibration_enabled, color_settings) = {
             let config = state.config.read();
-            config.calibration.enabled
+            (config.calibration.enabled, config.color.clone())
         };
+
+        // Update color LUT if settings changed
+        let current_hash = color_settings_hash(&color_settings);
+        if current_hash != last_color_settings_hash {
+            color_lut = ColorCorrectionLUT::from_settings(&color_settings);
+            last_color_settings_hash = current_hash;
+            info!("Color correction settings updated: enabled={}, color_space={:?}, input_range={:?}",
+                color_settings.enabled, color_settings.color_space, color_settings.input_range);
+        }
 
         // Timing: Decode/conversion (MJPEG decode or YUYV→RGB conversion)
         let decode_start = Instant::now();
 
         // Convert input to RGB for processing
-        let working_rgb = if is_mjpeg {
+        // For YUYV, use color-corrected conversion if enabled
+        if is_mjpeg {
             // Decode MJPEG to RGB
             match decode_mjpeg(buf, &mut rgb_buffer, actual_width, actual_height) {
-                Ok(rgb) => rgb,
+                Ok(_) => {
+                    // Apply range expansion for MJPEG if color correction is enabled
+                    // MJPEG from HDMI capture cards may be encoded with limited range
+                    if color_settings.enabled {
+                        crate::color::apply_range_expansion(&mut rgb_buffer, color_settings.input_range);
+                    }
+                }
                 Err(_) => {
                     if frame_count % 100 == 0 {
                         warn!("Failed to decode MJPEG frame");
@@ -183,19 +220,36 @@ pub fn run_pipeline(
                 }
             }
         } else if is_yuyv {
-            // Convert YUYV to RGB
-            yuyv_to_rgb(buf, &mut rgb_buffer, actual_width, actual_height);
-            &rgb_buffer[..]
+            // Convert YUYV to RGB with color space correction
+            if color_settings.enabled {
+                yuyv_to_rgb_corrected(
+                    buf,
+                    &mut rgb_buffer,
+                    actual_width,
+                    actual_height,
+                    color_settings.color_space,
+                    color_settings.input_range,
+                );
+            } else {
+                // Use legacy BT.601 conversion for backward compatibility
+                yuyv_to_rgb(buf, &mut rgb_buffer, actual_width, actual_height);
+            }
         } else if is_bgr {
             // Convert BGR to RGB
             bgr_to_rgb(buf, &mut rgb_buffer);
-            &rgb_buffer[..]
         } else {
             // Assume RGB or copy raw
             let copy_len = buf.len().min(rgb_buffer.len());
             rgb_buffer[..copy_len].copy_from_slice(&buf[..copy_len]);
-            &rgb_buffer[..]
-        };
+        }
+
+        // Apply software color correction (saturation, hue, brightness, contrast, gamma)
+        // This modifies rgb_buffer in place
+        if color_settings.enabled && color_settings.needs_processing() {
+            apply_color_correction(&mut rgb_buffer, &color_settings, &color_lut);
+        }
+
+        let working_rgb = &rgb_buffer[..];
 
         let decode_us = decode_start.elapsed().as_micros() as u64;
 
@@ -259,7 +313,7 @@ pub fn run_pipeline(
 }
 
 /// Configure the capture format, trying preferred formats in order
-fn configure_capture_format(dev: &Device, width: u32, height: u32) -> Result<v4l::Format> {
+fn configure_capture_format(dev: &Device, width: u32, height: u32, preferred_format: CaptureFormat) -> Result<v4l::Format> {
     // First, try to enumerate available formats
     let formats = dev.enum_formats()
         .context("Failed to enumerate formats")?;
@@ -269,8 +323,14 @@ fn configure_capture_format(dev: &Device, width: u32, height: u32) -> Result<v4l
         info!("  {:?}: {}", String::from_utf8_lossy(&fmt.fourcc.repr), fmt.description);
     }
 
+    // Select format order based on preference
+    let format_order = match preferred_format {
+        CaptureFormat::Mjpeg => FORMATS_MJPEG_FIRST,
+        CaptureFormat::Yuyv => FORMATS_YUYV_FIRST,
+    };
+
     // Try preferred formats in order
-    for preferred in PREFERRED_FORMATS {
+    for preferred in format_order {
         let fourcc = FourCC::new(preferred);
         if formats.iter().any(|f| f.fourcc == fourcc) {
             info!("Trying format: {:?} at {}x{}", String::from_utf8_lossy(*preferred), width, height);
@@ -472,6 +532,23 @@ pub fn yuyv_to_rgb(yuyv: &[u8], rgb: &mut [u8], width: usize, height: usize) {
         rgb[rgb_offset + 4] = (y1 - uv_g).clamp(0, 255) as u8;
         rgb[rgb_offset + 5] = (y1 + u_b).clamp(0, 255) as u8;
     }
+}
+
+/// Simple hash of color settings to detect changes without full comparison
+fn color_settings_hash(settings: &crate::color::ColorCorrection) -> u64 {
+    use std::hash::{Hash, Hasher};
+    use std::collections::hash_map::DefaultHasher;
+
+    let mut hasher = DefaultHasher::new();
+    settings.enabled.hash(&mut hasher);
+    (settings.color_space as u8).hash(&mut hasher);
+    (settings.input_range as u8).hash(&mut hasher);
+    settings.brightness.hash(&mut hasher);
+    ((settings.contrast * 1000.0) as i32).hash(&mut hasher);
+    ((settings.saturation * 1000.0) as i32).hash(&mut hasher);
+    ((settings.hue * 1000.0) as i32).hash(&mut hasher);
+    ((settings.gamma * 1000.0) as i32).hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Convert BGR to RGB (swap R and B channels) using chunks for better optimization
